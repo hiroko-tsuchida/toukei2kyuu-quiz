@@ -6,6 +6,7 @@
 
 import random
 
+import pandas as pd
 import streamlit as st
 
 from questions import QUESTIONS
@@ -23,6 +24,35 @@ def build_sets(level, size=SET_SIZE):
     return [qs[i : i + size] for i in range(0, len(qs), size)]
 
 
+def all_set_labels():
+    """全セットのラベル（例: 易1, 標準3, 難1）を表示順で返す。"""
+    labels = []
+    for level in LEVELS:
+        for i in range(len(build_sets(level))):
+            labels.append(f"{level}{i + 1}")
+    return labels
+
+
+def draw_progress_chart():
+    """セットごとの達成率（正解率）を棒グラフで表示する。"""
+    results = st.session_state.get("results", {})
+    labels = all_set_labels()
+    data = pd.DataFrame(
+        {"達成率(%)": [results.get(label, 0) for label in labels]},
+        index=labels,
+    )
+    st.bar_chart(data, y="達成率(%)", height=260)
+
+    if results:
+        avg = sum(results.values()) / len(results)
+        st.caption(
+            f"挑戦したセット: {len(results)} / {len(labels)} ｜ "
+            f"挑戦したセットの平均達成率: {avg:.0f}%"
+        )
+    else:
+        st.caption("セットを解くと、ここに達成率が記録されていきます。")
+
+
 # ------------------------------------------------------------------
 # セッション状態の初期化
 # ------------------------------------------------------------------
@@ -30,14 +60,17 @@ def init_state():
     """セッション状態を初期化する。最初は未開始（難易度を選ぶまで待つ）。"""
     if "order" not in st.session_state:
         st.session_state.order = None  # まだ難易度が選ばれていない
+    if "results" not in st.session_state:
+        st.session_state.results = {}  # セットごとの達成率（％）を記録
 
 
-def start_quiz(question_pool, shuffle=False):
+def start_quiz(question_pool, label=None, shuffle=False):
     """選んだ問題で新しいクイズを始める。"""
     pool = list(question_pool)
     if shuffle:
         random.shuffle(pool)
     st.session_state.order = pool
+    st.session_state.current_set = label  # いま挑戦中のセット名
     st.session_state.index = 0          # 今が何問目か
     st.session_state.score = 0          # 正解数
     st.session_state.answered = False   # 現在の問題に回答済みか
@@ -64,7 +97,7 @@ def sidebar_controls():
                 use_container_width=True,
                 key=f"set_{level}_{i}",
             ):
-                start_quiz(s)
+                start_quiz(s, label=f"{level}{i + 1}")
                 st.rerun()
 
     st.sidebar.markdown("---")
@@ -83,8 +116,14 @@ def show_result():
     score = st.session_state.score
     rate = score / total * 100 if total else 0
 
+    # このセットの達成率を記録する
+    label = st.session_state.get("current_set")
+    if label:
+        st.session_state.results[label] = rate
+
     st.subheader("🎉 おつかれさまでした！")
-    st.metric("スコア", f"{score} / {total}", f"{rate:.0f}%")
+    set_name = f"（{label}）" if label else ""
+    st.metric(f"スコア{set_name}", f"{score} / {total}", f"{rate:.0f}%")
 
     if rate >= 80:
         st.success("すばらしい！合格圏内のレベルです。")
@@ -92,6 +131,9 @@ def show_result():
         st.info("あと少し！まちがえた分野を復習しましょう。")
     else:
         st.warning("やさしい問題（易）から見直すと伸びます。あせらず復習しましょう。")
+
+    st.markdown("#### 📈 セットごとの達成率")
+    draw_progress_chart()
 
     st.caption("← サイドバーのセットボタンから次の問題に挑戦できます。")
 
@@ -177,6 +219,8 @@ def main():
             f"- 各セットは**{SET_SIZE}問**ずつに分かれています\n"
             "- 答えを選ぶと、その場で正誤と解説が表示されます"
         )
+        st.markdown("#### 📈 セットごとの達成率")
+        draw_progress_chart()
     elif st.session_state.finished:
         show_result()
     else:
