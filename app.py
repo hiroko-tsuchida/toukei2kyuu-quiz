@@ -12,18 +12,15 @@ from questions import QUESTIONS
 
 st.set_page_config(page_title="統計検定2級 クイズ", page_icon="📊", layout="centered")
 
-MAX_QUESTIONS = 5  # 1回の出題は最大この問題数まで
+SET_SIZE = 5  # 1セットあたりの問題数
 LEVELS = ["易", "標準", "難"]  # 難易度の表示順
 LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴"}
 
 
-def pick_questions(pool):
-    """プールから最大 MAX_QUESTIONS 問をランダムに選ぶ。"""
-    pool = list(pool)
-    if len(pool) > MAX_QUESTIONS:
-        return random.sample(pool, MAX_QUESTIONS)
-    random.shuffle(pool)
-    return pool
+def build_sets(level, size=SET_SIZE):
+    """ある難易度の問題を、並び順に size 問ずつのセットに分ける。"""
+    qs = [q for q in QUESTIONS if q["level"] == level]
+    return [qs[i : i + size] for i in range(0, len(qs), size)]
 
 
 # ------------------------------------------------------------------
@@ -52,21 +49,23 @@ def start_quiz(question_pool, shuffle=False):
 # サイドバー（分野の絞り込み・出題設定）
 # ------------------------------------------------------------------
 def sidebar_controls():
-    st.sidebar.header("⚙️ 難易度を選ぶ")
-    st.sidebar.caption(f"選ぶとすぐに始まります（最大{MAX_QUESTIONS}問）👇")
+    st.sidebar.header("⚙️ 出題セットを選ぶ")
+    st.sidebar.caption(f"ボタンを押すとその{SET_SIZE}問が始まります 👇")
 
-    # 易・標準・難 のボタンを縦一列に並べる
+    # 難易度ごとに、5問ずつのセットボタンを縦一列に並べる
     for level in LEVELS:
-        pool = [q for q in QUESTIONS if q["level"] == level]
-        badge = LEVEL_BADGE[level]
-        if st.sidebar.button(
-            f"{badge} {level}（{len(pool)}問）",
-            use_container_width=True,
-            key=f"level_{level}",
-            disabled=len(pool) == 0,
-        ):
-            start_quiz(pick_questions(pool))
-            st.rerun()
+        sets = build_sets(level)
+        if not sets:
+            continue
+        st.sidebar.markdown(f"**{LEVEL_BADGE[level]} {level}（{sum(len(s) for s in sets)}問）**")
+        for i, s in enumerate(sets):
+            if st.sidebar.button(
+                f"セット{i + 1}（{len(s)}問）",
+                use_container_width=True,
+                key=f"set_{level}_{i}",
+            ):
+                start_quiz(s)
+                st.rerun()
 
     st.sidebar.markdown("---")
     counts = " ／ ".join(
@@ -94,7 +93,7 @@ def show_result():
     else:
         st.warning("やさしい問題（易）から見直すと伸びます。あせらず復習しましょう。")
 
-    st.caption("← サイドバーの難易度ボタンから次の問題に挑戦できます。")
+    st.caption("← サイドバーのセットボタンから次の問題に挑戦できます。")
 
 
 # ------------------------------------------------------------------
@@ -173,9 +172,9 @@ def main():
     sidebar_controls()
 
     if st.session_state.order is None:
-        st.info("👈 左のサイドバーから難易度（易・標準・難）を選ぶと、クイズが始まります。")
+        st.info("👈 左のサイドバーから出題セット（易・標準・難）を選ぶと、クイズが始まります。")
         st.markdown(
-            f"- 各難易度から**最大{MAX_QUESTIONS}問**がランダムに出題されます\n"
+            f"- 各セットは**{SET_SIZE}問**ずつに分かれています\n"
             "- 答えを選ぶと、その場で正誤と解説が表示されます"
         )
     elif st.session_state.finished:
