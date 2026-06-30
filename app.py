@@ -53,12 +53,20 @@ def sidebar_controls():
         ["回（8問セット）で選ぶ", "分野・難易度で選ぶ"],
     )
 
+    shuffle = st.sidebar.checkbox("問題の順番をシャッフル", value=False)
+
     if mode == "回（8問セット）で選ぶ":
         rounds = build_rounds()
-        labels = [f"第{i + 1}回（{len(r)}問）" for i, r in enumerate(rounds)]
-        chosen = st.sidebar.selectbox("回を選ぶ", labels)
-        round_no = labels.index(chosen)  # 0始まり
-        pool = rounds[round_no]
+        st.sidebar.caption("回を選ぶとすぐに始まります 👇")
+        # 第1回〜第7回のボタンを縦一列に並べる
+        for i, r in enumerate(rounds):
+            if st.sidebar.button(
+                f"第{i + 1}回（{len(r)}問）",
+                use_container_width=True,
+                key=f"round_{i}",
+            ):
+                start_quiz(r, shuffle=shuffle)
+                st.rerun()
     else:
         categories = ["すべて"] + sorted({q["category"] for q in QUESTIONS})
         chosen_cat = st.sidebar.selectbox("分野を選ぶ", categories)
@@ -75,20 +83,18 @@ def sidebar_controls():
         if chosen_level != "すべて":
             pool = [q for q in pool if q["level"] == chosen_level]
 
-    shuffle = st.sidebar.checkbox("問題の順番をシャッフル", value=False)
+        st.sidebar.caption(f"この条件の問題数: {len(pool)} 問")
 
-    st.sidebar.caption(f"この条件の問題数: {len(pool)} 問")
+        if st.sidebar.button(
+            "この設定でスタート / リセット",
+            use_container_width=True,
+            disabled=len(pool) == 0,
+        ):
+            start_quiz(pool, shuffle=shuffle)
+            st.rerun()
 
-    if st.sidebar.button(
-        "この設定でスタート / リセット",
-        use_container_width=True,
-        disabled=len(pool) == 0,
-    ):
-        start_quiz(pool, shuffle=shuffle)
-        st.rerun()
-
-    if len(pool) == 0:
-        st.sidebar.warning("この条件に合う問題がありません。条件を変えてください。")
+        if len(pool) == 0:
+            st.sidebar.warning("この条件に合う問題がありません。条件を変えてください。")
 
     st.sidebar.markdown("---")
     n_rounds = len(build_rounds())
