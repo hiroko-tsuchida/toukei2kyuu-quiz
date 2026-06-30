@@ -7,8 +7,6 @@
 import json
 import random
 
-import altair as alt
-import pandas as pd
 import streamlit as st
 from streamlit_local_storage import LocalStorage
 
@@ -17,26 +15,9 @@ from questions import QUESTIONS
 st.set_page_config(page_title="統計検定2級 クイズ", page_icon="📊", layout="centered")
 
 SET_SIZE = 5  # 1セットあたりの問題数
-LEVELS = ["易", "標準", "難"]  # 難易度の表示順
-LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴"}
+LEVELS = ["易", "標準", "難", "実践"]  # 難易度の表示順
+LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴", "実践": "🟣"}
 STORAGE_KEY = "toukei2kyuu_results"  # 端末（localStorage）に保存するキー
-
-
-def level_of(label):
-    """セットのラベル（例: 標準3）から難易度（標準）を取り出す。"""
-    for lv in LEVELS:
-        if label.startswith(lv):
-            return lv
-    return None
-
-
-def medal(avg):
-    """平均達成率に応じた達成バッジ（メダル）を返す。"""
-    if avg >= 80:
-        return "🥇 金メダル"
-    if avg >= 60:
-        return "🥈 銀メダル"
-    return "🥉 銅メダル"
 
 
 def build_sets(level, size=SET_SIZE):
@@ -54,61 +35,8 @@ def all_set_labels():
     return labels
 
 
-def draw_level_summary():
-    """難易度ごとの平均達成率と達成バッジを表示する。"""
-    results = st.session_state.get("results", {})
-    labels = all_set_labels()
-    cols = st.columns(len(LEVELS))
-    for col, lv in zip(cols, LEVELS):
-        lv_labels = [la for la in labels if level_of(la) == lv]
-        vals = [results[la] for la in lv_labels if la in results]
-        title = f"{LEVEL_BADGE[lv]} {lv}"
-        if vals:
-            avg = sum(vals) / len(vals)
-            col.metric(title, f"{avg:.0f}%", f"{len(vals)}/{len(lv_labels)} セット")
-            badge = medal(avg)
-            # その難易度を全セット制覇していたら王冠を付ける
-            if len(vals) == len(lv_labels):
-                badge += "・👑全制覇"
-            col.caption(badge)
-        else:
-            col.metric(title, "—", "未挑戦")
-
-
-def draw_completion_pie():
-    """挑戦済み／未挑戦のセット数を円グラフで表示する。"""
-    results = st.session_state.get("results", {})
-    total = len(all_set_labels())
-    done = len(results)
-    pie_df = pd.DataFrame(
-        {"状態": ["挑戦済み", "未挑戦"], "セット数": [done, total - done]}
-    )
-    chart = (
-        alt.Chart(pie_df)
-        .mark_arc(innerRadius=50)
-        .encode(
-            theta=alt.Theta("セット数:Q"),
-            color=alt.Color(
-                "状態:N",
-                scale=alt.Scale(
-                    domain=["挑戦済み", "未挑戦"], range=["#4C9BE8", "#E0E0E0"]
-                ),
-                legend=alt.Legend(title=None),
-            ),
-            tooltip=["状態", "セット数"],
-        )
-        .properties(height=240)
-    )
-    st.altair_chart(chart, use_container_width=True)
-    avg_line = ""
-    if results:
-        avg = sum(results.values()) / len(results)
-        avg_line = f" ｜ 平均達成率: {avg:.0f}%"
-    st.caption(f"進み具合: {done} / {total} セット完了{avg_line}")
-
-
 def draw_stats():
-    """成績ダッシュボード（難易度サマリ・円グラフ）をまとめて表示する。"""
+    """成績ダッシュボード（全制覇のお知らせと案内）を表示する。"""
     results = st.session_state.get("results", {})
     total = len(all_set_labels())
 
@@ -116,11 +44,6 @@ def draw_stats():
     if results and len(results) == total:
         st.success("🎉 全12セット制覇！コンプリートおめでとうございます！")
 
-    st.markdown("##### 難易度ごとの達成率")
-    draw_level_summary()
-
-    st.markdown("##### 進み具合")
-    draw_completion_pie()
     st.caption("※ セットごとの達成率は、左のサイドバーの各セットの下に表示されます。")
 
 
@@ -253,8 +176,6 @@ def show_question():
     q = order[i]
     total = len(order)
 
-    # 進捗バー
-    st.progress((i) / total, text=f"第 {i + 1} 問 / 全 {total} 問")
     badge = LEVEL_BADGE.get(q["level"], "")
     st.caption(f"分野: {q['category']} ｜ 難易度: {badge} {q['level']}")
     st.markdown(f"### Q{i + 1}. {q['question']}")
