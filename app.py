@@ -4,10 +4,13 @@
     streamlit run app.py
 """
 
+import json
 import random
 
+import altair as alt
 import pandas as pd
 import streamlit as st
+from streamlit_local_storage import LocalStorage
 
 from questions import QUESTIONS
 
@@ -16,6 +19,24 @@ st.set_page_config(page_title="統計検定2級 クイズ", page_icon="📊", la
 SET_SIZE = 5  # 1セットあたりの問題数
 LEVELS = ["易", "標準", "難"]  # 難易度の表示順
 LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴"}
+STORAGE_KEY = "toukei2kyuu_results"  # 端末（localStorage）に保存するキー
+
+
+def level_of(label):
+    """セットのラベル（例: 標準3）から難易度（標準）を取り出す。"""
+    for lv in LEVELS:
+        if label.startswith(lv):
+            return lv
+    return None
+
+
+def medal(avg):
+    """平均達成率に応じた達成バッジ（メダル）を返す。"""
+    if avg >= 80:
+        return "🥇 金メダル"
+    if avg >= 60:
+        return "🥈 銀メダル"
+    return "🥉 銅メダル"
 
 
 def build_sets(level, size=SET_SIZE):
@@ -53,15 +74,90 @@ def draw_progress_chart():
         st.caption("セットを解くと、ここに達成率が記録されていきます。")
 
 
+def draw_level_summary():
+    """難易度ごとの平均達成率と達成バッジを表示する。"""
+    results = st.session_state.get("results", {})
+    labels = all_set_labels()
+    cols = st.columns(len(LEVELS))
+    for col, lv in zip(cols, LEVELS):
+        lv_labels = [la for la in labels if level_of(la) == lv]
+        vals = [results[la] for la in lv_labels if la in results]
+        title = f"{LEVEL_BADGE[lv]} {lv}"
+        if vals:
+            avg = sum(vals) / len(vals)
+            col.metric(title, f"{avg:.0f}%", f"{len(vals)}/{len(lv_labels)} セット")
+            badge = medal(avg)
+            # その難易度を全セット制覇していたら王冠を付ける
+            if len(vals) == len(lv_labels):
+                badge += "・👑全制覇"
+            col.caption(badge)
+        else:
+            col.metric(title, "—", "未挑戦")
+
+
+def draw_completion_pie():
+    """挑戦済み／未挑戦のセット数を円グラフで表示する。"""
+    results = st.session_state.get("results", {})
+    total = len(all_set_labels())
+    done = len(results)
+    pie_df = pd.DataFrame(
+        {"状態": ["挑戦済み", "未挑戦"], "セット数": [done, total - done]}
+    )
+    chart = (
+        alt.Chart(pie_df)
+        .mark_arc(innerRadius=50)
+        .encode(
+            theta=alt.Theta("セット数:Q"),
+            color=alt.Color(
+                "状態:N",
+                scale=alt.Scale(
+                    domain=["挑戦済み", "未挑戦"], range=["#4C9BE8", "#E0E0E0"]
+                ),
+                legend=alt.Legend(title=None),
+            ),
+            tooltip=["状態", "セット数"],
+        )
+        .properties(height=240)
+    )
+    st.altair_chart(chart, use_container_width=True)
+    st.caption(f"進み具合: {done} / {total} セット完了")
+
+
+def draw_stats():
+    """成績ダッシュボード（難易度サマリ・円グラフ・棒グラフ）をまとめて表示する。"""
+    results = st.session_state.get("results", {})
+    total = len(all_set_labels())
+
+    # 全セット制覇のお知らせ
+    if results and len(results) == total:
+        st.success("🎉 全12セット制覇！コンプリートおめでとうございます！")
+
+    st.markdown("##### 難易度ごとの達成率")
+    draw_level_summary()
+
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        st.markdown("##### 進み具合")
+        draw_completion_pie()
+    with c2:
+        st.markdown("##### セットごとの達成率")
+        draw_progress_chart()
+
+
 # ------------------------------------------------------------------
 # セッション状態の初期化
 # ------------------------------------------------------------------
-def init_state():
-    """セッション状態を初期化する。最初は未開始（難易度を選ぶまで待つ）。"""
+def init_state(local_storage):
+    """セッション状態を初期化する。達成率は端末（localStorage）から読み込む。"""
     if "order" not in st.session_state:
         st.session_state.order = None  # まだ難易度が選ばれていない
     if "results" not in st.session_state:
-        st.session_state.results = {}  # セットごとの達成率（％）を記録
+        # 端末に保存された達成率を読み込む（なければ空）
+        raw = local_storage.getItem(STORAGE_KEY)
+        try:
+            st.session_state.results = json.loads(raw) if raw else {}
+        except (ValueError, TypeError):
+            st.session_state.results = {}
 
 
 def start_quiz(question_pool, label=None, shuffle=False):
@@ -76,12 +172,13 @@ def start_quiz(question_pool, label=None, shuffle=False):
     st.session_state.answered = False   # 現在の問題に回答済みか
     st.session_state.selected = None    # 選んだ選択肢
     st.session_state.finished = False   # 全問終わったか
+    st.session_state.result_saved = False  # 結果を保存済みか
 
 
 # ------------------------------------------------------------------
 # サイドバー（分野の絞り込み・出題設定）
 # ------------------------------------------------------------------
-def sidebar_controls():
+def sidebar_controls(local_storage):
     st.sidebar.header("⚙️ 出題セットを選ぶ")
     st.sidebar.caption(f"ボタンを押すとその{SET_SIZE}問が始まります 👇")
 
@@ -107,19 +204,31 @@ def sidebar_controls():
     )
     st.sidebar.caption(f"全{len(QUESTIONS)}問　{counts}")
 
+    if st.session_state.get("results") and st.sidebar.button(
+        "🗑️ 達成率の記録をリセット", use_container_width=True
+    ):
+        st.session_state.results = {}
+        local_storage.setItem(STORAGE_KEY, json.dumps({}))
+        st.rerun()
+
 
 # ------------------------------------------------------------------
 # 結果画面
 # ------------------------------------------------------------------
-def show_result():
+def show_result(local_storage):
     total = len(st.session_state.order)
     score = st.session_state.score
     rate = score / total * 100 if total else 0
 
-    # このセットの達成率を記録する
+    # このセットの達成率を記録し、端末（localStorage）にも保存する
     label = st.session_state.get("current_set")
-    if label:
+    if label and not st.session_state.get("result_saved"):
         st.session_state.results[label] = rate
+        local_storage.setItem(STORAGE_KEY, json.dumps(st.session_state.results))
+        st.session_state.result_saved = True
+        # 全セット制覇した瞬間だけ風船を飛ばす
+        if len(st.session_state.results) == len(all_set_labels()):
+            st.balloons()
 
     st.subheader("🎉 おつかれさまでした！")
     set_name = f"（{label}）" if label else ""
@@ -132,8 +241,8 @@ def show_result():
     else:
         st.warning("やさしい問題（易）から見直すと伸びます。あせらず復習しましょう。")
 
-    st.markdown("#### 📈 セットごとの達成率")
-    draw_progress_chart()
+    st.markdown("#### 📈 あなたの成績")
+    draw_stats()
 
     st.caption("← サイドバーのセットボタンから次の問題に挑戦できます。")
 
@@ -210,19 +319,21 @@ def main():
     st.title("📊 統計検定2級 クイズ")
     st.caption("選択式の問題に答えて、その場で解説を確認できます。")
 
-    init_state()
-    sidebar_controls()
+    local_storage = LocalStorage()
+    init_state(local_storage)
+    sidebar_controls(local_storage)
 
     if st.session_state.order is None:
         st.info("👈 左のサイドバーから出題セット（易・標準・難）を選ぶと、クイズが始まります。")
         st.markdown(
             f"- 各セットは**{SET_SIZE}問**ずつに分かれています\n"
-            "- 答えを選ぶと、その場で正誤と解説が表示されます"
+            "- 答えを選ぶと、その場で正誤と解説が表示されます\n"
+            "- 達成率は端末に保存され、次に開いたときも残ります"
         )
-        st.markdown("#### 📈 セットごとの達成率")
-        draw_progress_chart()
+        st.markdown("#### 📈 あなたの成績")
+        draw_stats()
     elif st.session_state.finished:
-        show_result()
+        show_result(local_storage)
     else:
         show_question()
 
