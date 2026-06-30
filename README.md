@@ -1,6 +1,12 @@
 # 統計検定2級 クイズアプリ 📊
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://toukei2kyuu-quiz.streamlit.app)
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.58-FF4B4B.svg)](https://streamlit.io/)
+
 統計検定2級の主要範囲を、選択式クイズでその場で解説を見ながら学べる Streamlit アプリです。
+
+🔗 **デモ: https://toukei2kyuu-quiz.streamlit.app** （Streamlit Cloud でデプロイ後に有効になります）
 
 ## 特長
 
