@@ -54,26 +54,6 @@ def all_set_labels():
     return labels
 
 
-def draw_progress_chart():
-    """セットごとの達成率（正解率）を棒グラフで表示する。"""
-    results = st.session_state.get("results", {})
-    labels = all_set_labels()
-    data = pd.DataFrame(
-        {"達成率(%)": [results.get(label, 0) for label in labels]},
-        index=labels,
-    )
-    st.bar_chart(data, y="達成率(%)", height=260)
-
-    if results:
-        avg = sum(results.values()) / len(results)
-        st.caption(
-            f"挑戦したセット: {len(results)} / {len(labels)} ｜ "
-            f"挑戦したセットの平均達成率: {avg:.0f}%"
-        )
-    else:
-        st.caption("セットを解くと、ここに達成率が記録されていきます。")
-
-
 def draw_level_summary():
     """難易度ごとの平均達成率と達成バッジを表示する。"""
     results = st.session_state.get("results", {})
@@ -120,11 +100,15 @@ def draw_completion_pie():
         .properties(height=240)
     )
     st.altair_chart(chart, use_container_width=True)
-    st.caption(f"進み具合: {done} / {total} セット完了")
+    avg_line = ""
+    if results:
+        avg = sum(results.values()) / len(results)
+        avg_line = f" ｜ 平均達成率: {avg:.0f}%"
+    st.caption(f"進み具合: {done} / {total} セット完了{avg_line}")
 
 
 def draw_stats():
-    """成績ダッシュボード（難易度サマリ・円グラフ・棒グラフ）をまとめて表示する。"""
+    """成績ダッシュボード（難易度サマリ・円グラフ）をまとめて表示する。"""
     results = st.session_state.get("results", {})
     total = len(all_set_labels())
 
@@ -135,13 +119,9 @@ def draw_stats():
     st.markdown("##### 難易度ごとの達成率")
     draw_level_summary()
 
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.markdown("##### 進み具合")
-        draw_completion_pie()
-    with c2:
-        st.markdown("##### セットごとの達成率")
-        draw_progress_chart()
+    st.markdown("##### 進み具合")
+    draw_completion_pie()
+    st.caption("※ セットごとの達成率は、左のサイドバーの各セットの下に表示されます。")
 
 
 # ------------------------------------------------------------------
@@ -188,14 +168,22 @@ def sidebar_controls(local_storage):
         if not sets:
             continue
         st.sidebar.markdown(f"**{LEVEL_BADGE[level]} {level}（{sum(len(s) for s in sets)}問）**")
+        results = st.session_state.get("results", {})
         for i, s in enumerate(sets):
+            label = f"{level}{i + 1}"
             if st.sidebar.button(
                 f"セット{i + 1}（{len(s)}問）",
                 use_container_width=True,
                 key=f"set_{level}_{i}",
             ):
-                start_quiz(s, label=f"{level}{i + 1}")
+                start_quiz(s, label=label)
                 st.rerun()
+            # ボタンの下にそのセットの達成率を表示する
+            if label in results:
+                rate = results[label]
+                st.sidebar.progress(rate / 100, text=f"達成率 {rate:.0f}%")
+            else:
+                st.sidebar.caption("　未挑戦")
 
     st.sidebar.markdown("---")
     counts = " ／ ".join(
@@ -215,20 +203,29 @@ def sidebar_controls(local_storage):
 # ------------------------------------------------------------------
 # 結果画面
 # ------------------------------------------------------------------
-def show_result(local_storage):
+def record_result(local_storage):
+    """終了したセットの達成率を記録し、端末（localStorage）にも保存する。
+    サイドバーを描く前に呼ぶことで、各セットの達成率がすぐ反映される。"""
+    if st.session_state.get("result_saved"):
+        return
+    label = st.session_state.get("current_set")
     total = len(st.session_state.order)
     score = st.session_state.score
     rate = score / total * 100 if total else 0
-
-    # このセットの達成率を記録し、端末（localStorage）にも保存する
-    label = st.session_state.get("current_set")
-    if label and not st.session_state.get("result_saved"):
+    if label:
         st.session_state.results[label] = rate
         local_storage.setItem(STORAGE_KEY, json.dumps(st.session_state.results))
-        st.session_state.result_saved = True
-        # 全セット制覇した瞬間だけ風船を飛ばす
-        if len(st.session_state.results) == len(all_set_labels()):
-            st.balloons()
+    st.session_state.result_saved = True
+    # 全セット制覇した瞬間だけ風船を飛ばす
+    if len(st.session_state.results) == len(all_set_labels()):
+        st.balloons()
+
+
+def show_result():
+    total = len(st.session_state.order)
+    score = st.session_state.score
+    rate = score / total * 100 if total else 0
+    label = st.session_state.get("current_set")
 
     st.subheader("🎉 おつかれさまでした！")
     set_name = f"（{label}）" if label else ""
@@ -321,6 +318,11 @@ def main():
 
     local_storage = LocalStorage()
     init_state(local_storage)
+
+    # サイドバーを描く前に、終了したセットの達成率を記録しておく
+    if st.session_state.get("finished"):
+        record_result(local_storage)
+
     sidebar_controls(local_storage)
 
     if st.session_state.order is None:
@@ -333,7 +335,7 @@ def main():
         st.markdown("#### 📈 あなたの成績")
         draw_stats()
     elif st.session_state.finished:
-        show_result(local_storage)
+        show_result()
     else:
         show_question()
 
