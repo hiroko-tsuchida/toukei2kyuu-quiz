@@ -12,6 +12,13 @@ from questions import QUESTIONS
 
 st.set_page_config(page_title="統計検定2級 クイズ", page_icon="📊", layout="centered")
 
+PER_ROUND = 8  # 1回あたりの問題数
+
+
+def build_rounds(per=PER_ROUND):
+    """問題を並び順に per 問ずつ区切って『回』のリストを作る。"""
+    return [QUESTIONS[i : i + per] for i in range(0, len(QUESTIONS), per)]
+
 
 # ------------------------------------------------------------------
 # セッション状態の初期化
@@ -41,22 +48,34 @@ def start_quiz(question_pool, shuffle=False):
 def sidebar_controls():
     st.sidebar.header("⚙️ 出題設定")
 
-    categories = ["すべて"] + sorted({q["category"] for q in QUESTIONS})
-    chosen = st.sidebar.selectbox("分野を選ぶ", categories)
+    mode = st.sidebar.radio(
+        "出題のしかた",
+        ["回（8問セット）で選ぶ", "分野・難易度で選ぶ"],
+    )
 
-    # 難易度は決まった順番で並べる（基礎→標準→応用）
-    level_order = ["基礎", "標準", "応用"]
-    present = [lv for lv in level_order if any(q["level"] == lv for q in QUESTIONS)]
-    levels = ["すべて"] + present
-    chosen_level = st.sidebar.selectbox("難易度を選ぶ", levels)
+    if mode == "回（8問セット）で選ぶ":
+        rounds = build_rounds()
+        labels = [f"第{i + 1}回（{len(r)}問）" for i, r in enumerate(rounds)]
+        chosen = st.sidebar.selectbox("回を選ぶ", labels)
+        round_no = labels.index(chosen)  # 0始まり
+        pool = rounds[round_no]
+    else:
+        categories = ["すべて"] + sorted({q["category"] for q in QUESTIONS})
+        chosen_cat = st.sidebar.selectbox("分野を選ぶ", categories)
+
+        # 難易度は決まった順番で並べる（基礎→標準→応用）
+        level_order = ["基礎", "標準", "応用"]
+        present = [lv for lv in level_order if any(q["level"] == lv for q in QUESTIONS)]
+        levels = ["すべて"] + present
+        chosen_level = st.sidebar.selectbox("難易度を選ぶ", levels)
+
+        pool = QUESTIONS
+        if chosen_cat != "すべて":
+            pool = [q for q in pool if q["category"] == chosen_cat]
+        if chosen_level != "すべて":
+            pool = [q for q in pool if q["level"] == chosen_level]
 
     shuffle = st.sidebar.checkbox("問題の順番をシャッフル", value=False)
-
-    pool = QUESTIONS
-    if chosen != "すべて":
-        pool = [q for q in pool if q["category"] == chosen]
-    if chosen_level != "すべて":
-        pool = [q for q in pool if q["level"] == chosen_level]
 
     st.sidebar.caption(f"この条件の問題数: {len(pool)} 問")
 
@@ -72,7 +91,8 @@ def sidebar_controls():
         st.sidebar.warning("この条件に合う問題がありません。条件を変えてください。")
 
     st.sidebar.markdown("---")
-    st.sidebar.caption(f"全{len(QUESTIONS)}問から出題できます。")
+    n_rounds = len(build_rounds())
+    st.sidebar.caption(f"全{len(QUESTIONS)}問 ／ 第1回〜第{n_rounds}回（各{PER_ROUND}問）")
 
 
 # ------------------------------------------------------------------
