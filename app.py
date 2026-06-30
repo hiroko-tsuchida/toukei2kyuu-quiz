@@ -12,21 +12,27 @@ from questions import QUESTIONS
 
 st.set_page_config(page_title="統計検定2級 クイズ", page_icon="📊", layout="centered")
 
-PER_ROUND = 8  # 1回あたりの問題数
+MAX_QUESTIONS = 5  # 1回の出題は最大この問題数まで
+LEVELS = ["易", "標準", "難"]  # 難易度の表示順
+LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴"}
 
 
-def build_rounds(per=PER_ROUND):
-    """問題を並び順に per 問ずつ区切って『回』のリストを作る。"""
-    return [QUESTIONS[i : i + per] for i in range(0, len(QUESTIONS), per)]
+def pick_questions(pool):
+    """プールから最大 MAX_QUESTIONS 問をランダムに選ぶ。"""
+    pool = list(pool)
+    if len(pool) > MAX_QUESTIONS:
+        return random.sample(pool, MAX_QUESTIONS)
+    random.shuffle(pool)
+    return pool
 
 
 # ------------------------------------------------------------------
 # セッション状態の初期化
 # ------------------------------------------------------------------
 def init_state():
-    """出題する問題リストや回答状況をセッションに用意する。"""
+    """セッション状態を初期化する。最初は未開始（難易度を選ぶまで待つ）。"""
     if "order" not in st.session_state:
-        start_quiz(QUESTIONS)
+        st.session_state.order = None  # まだ難易度が選ばれていない
 
 
 def start_quiz(question_pool, shuffle=False):
@@ -46,59 +52,28 @@ def start_quiz(question_pool, shuffle=False):
 # サイドバー（分野の絞り込み・出題設定）
 # ------------------------------------------------------------------
 def sidebar_controls():
-    st.sidebar.header("⚙️ 出題設定")
+    st.sidebar.header("⚙️ 難易度を選ぶ")
+    st.sidebar.caption(f"選ぶとすぐに始まります（最大{MAX_QUESTIONS}問）👇")
 
-    mode = st.sidebar.radio(
-        "出題のしかた",
-        ["回（8問セット）で選ぶ", "分野・難易度で選ぶ"],
-    )
-
-    shuffle = st.sidebar.checkbox("問題の順番をシャッフル", value=False)
-
-    if mode == "回（8問セット）で選ぶ":
-        rounds = build_rounds()
-        st.sidebar.caption("回を選ぶとすぐに始まります 👇")
-        # 第1回〜第7回のボタンを縦一列に並べる
-        for i, r in enumerate(rounds):
-            if st.sidebar.button(
-                f"第{i + 1}回（{len(r)}問）",
-                use_container_width=True,
-                key=f"round_{i}",
-            ):
-                start_quiz(r, shuffle=shuffle)
-                st.rerun()
-    else:
-        categories = ["すべて"] + sorted({q["category"] for q in QUESTIONS})
-        chosen_cat = st.sidebar.selectbox("分野を選ぶ", categories)
-
-        # 難易度は決まった順番で並べる（基礎→標準→応用）
-        level_order = ["基礎", "標準", "応用"]
-        present = [lv for lv in level_order if any(q["level"] == lv for q in QUESTIONS)]
-        levels = ["すべて"] + present
-        chosen_level = st.sidebar.selectbox("難易度を選ぶ", levels)
-
-        pool = QUESTIONS
-        if chosen_cat != "すべて":
-            pool = [q for q in pool if q["category"] == chosen_cat]
-        if chosen_level != "すべて":
-            pool = [q for q in pool if q["level"] == chosen_level]
-
-        st.sidebar.caption(f"この条件の問題数: {len(pool)} 問")
-
+    # 易・標準・難 のボタンを縦一列に並べる
+    for level in LEVELS:
+        pool = [q for q in QUESTIONS if q["level"] == level]
+        badge = LEVEL_BADGE[level]
         if st.sidebar.button(
-            "この設定でスタート / リセット",
+            f"{badge} {level}（{len(pool)}問）",
             use_container_width=True,
+            key=f"level_{level}",
             disabled=len(pool) == 0,
         ):
-            start_quiz(pool, shuffle=shuffle)
+            start_quiz(pick_questions(pool))
             st.rerun()
 
-        if len(pool) == 0:
-            st.sidebar.warning("この条件に合う問題がありません。条件を変えてください。")
-
     st.sidebar.markdown("---")
-    n_rounds = len(build_rounds())
-    st.sidebar.caption(f"全{len(QUESTIONS)}問 ／ 第1回〜第{n_rounds}回（各{PER_ROUND}問）")
+    counts = " ／ ".join(
+        f"{LEVEL_BADGE[lv]}{lv} {sum(1 for q in QUESTIONS if q['level'] == lv)}問"
+        for lv in LEVELS
+    )
+    st.sidebar.caption(f"全{len(QUESTIONS)}問　{counts}")
 
 
 # ------------------------------------------------------------------
@@ -117,11 +92,9 @@ def show_result():
     elif rate >= 60:
         st.info("あと少し！まちがえた分野を復習しましょう。")
     else:
-        st.warning("基礎をもう一度確認すると伸びます。あせらず復習しましょう。")
+        st.warning("やさしい問題（易）から見直すと伸びます。あせらず復習しましょう。")
 
-    if st.button("もう一度挑戦する", use_container_width=True):
-        start_quiz(st.session_state.order)
-        st.rerun()
+    st.caption("← サイドバーの難易度ボタンから次の問題に挑戦できます。")
 
 
 # ------------------------------------------------------------------
@@ -135,7 +108,7 @@ def show_question():
 
     # 進捗バー
     st.progress((i) / total, text=f"第 {i + 1} 問 / 全 {total} 問")
-    badge = {"基礎": "🟢", "標準": "🟡", "応用": "🔴"}.get(q["level"], "")
+    badge = LEVEL_BADGE.get(q["level"], "")
     st.caption(f"分野: {q['category']} ｜ 難易度: {badge} {q['level']}")
     st.markdown(f"### Q{i + 1}. {q['question']}")
     if q.get("calc"):
@@ -199,7 +172,13 @@ def main():
     init_state()
     sidebar_controls()
 
-    if st.session_state.finished:
+    if st.session_state.order is None:
+        st.info("👈 左のサイドバーから難易度（易・標準・難）を選ぶと、クイズが始まります。")
+        st.markdown(
+            f"- 各難易度から**最大{MAX_QUESTIONS}問**がランダムに出題されます\n"
+            "- 答えを選ぶと、その場で正誤と解説が表示されます"
+        )
+    elif st.session_state.finished:
         show_result()
     else:
         show_question()
