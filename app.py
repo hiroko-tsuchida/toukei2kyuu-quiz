@@ -42,7 +42,7 @@ def draw_stats():
 
     # 全セット制覇のお知らせ
     if results and len(results) == total:
-        st.success("🎉 全12セット制覇！コンプリートおめでとうございます！")
+        st.success(f"🎉 全{total}セット制覇！コンプリートおめでとうございます！")
 
     st.caption("※ セットごとの達成率は、左のサイドバーの各セットの下に表示されます。")
 
@@ -247,7 +247,7 @@ def main():
     sidebar_controls(local_storage)
 
     if st.session_state.order is None:
-        st.info("👈 左のサイドバーから出題セット（易・標準・難）を選ぶと、クイズが始まります。")
+        st.info("👈 左のサイドバーから出題セット（易・標準・難・実践）を選ぶと、クイズが始まります。")
         st.markdown(
             f"- 各セットは**{SET_SIZE}問**ずつに分かれています\n"
             "- 答えを選ぶと、その場で正誤と解説が表示されます\n"
