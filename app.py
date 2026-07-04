@@ -107,6 +107,40 @@ def start_quiz(question_pool, label=None, shuffle=False, start_index=0, start_sc
 # サイドバー（分野の絞り込み・出題設定）
 # ------------------------------------------------------------------
 def sidebar_controls(local_storage):
+    # 一番上に「全体の達成率」をドーナツグラフで表示する
+    # （全セットの達成率の平均。未挑戦のセットは0%として数える）
+    labels = all_set_labels()
+    results = st.session_state.get("results", {})
+    overall = sum(results.get(lbl, 0) for lbl in labels) / len(labels) if labels else 0
+    attempted = sum(1 for lbl in labels if lbl in results)
+    st.sidebar.markdown(
+        f"""
+        <div style="text-align:center;margin-bottom:0.2rem;">
+          <svg width="140" height="140" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="15.9155" fill="none"
+                    stroke="#e6e6e6" stroke-width="3.6"/>
+            <circle cx="18" cy="18" r="15.9155" fill="none"
+                    stroke="#1c83e1" stroke-width="3.6" stroke-linecap="round"
+                    stroke-dasharray="{overall} {100 - overall}"
+                    transform="rotate(-90 18 18)"/>
+            <text x="18" y="18" text-anchor="middle" dominant-baseline="central"
+                  font-size="8" font-weight="700" fill="#1c83e1">{overall:.0f}%</text>
+          </svg>
+          <div style="font-size:0.8rem;color:#666;">
+            全体の達成率（{attempted}/{len(labels)}セット挑戦済み）
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # ドーナツグラフの下に、全体の問題数と難易度ごとの内訳を表示する
+    counts = " ／ ".join(
+        f"{LEVEL_BADGE[lv]}{lv} {sum(1 for q in QUESTIONS if q['level'] == lv)}問"
+        for lv in LEVELS
+    )
+    st.sidebar.caption(f"全{len(QUESTIONS)}問　{counts}")
+    st.sidebar.markdown("---")
+
     st.sidebar.header("⚙️ 出題セットを選ぶ")
     st.sidebar.caption(f"ボタンを押すとその{SET_SIZE}問が始まります 👇")
 
@@ -125,8 +159,11 @@ def sidebar_controls(local_storage):
                 st.sidebar.progress(rate / 100, text=f"達成率 {rate:.0f}%")
             else:
                 st.sidebar.caption("　未挑戦")
+            # そのセットに含まれる分野を（重複を除き順番どおりに）並べる
+            # 分野名に「・」が入るものがあるので、区切りは「／」を使う
+            cats = "／".join(dict.fromkeys(q["category"] for q in s))
             if st.sidebar.button(
-                f"セット{i + 1}（{len(s)}問）",
+                f"セット{i + 1}：{cats}（{len(s)}問）",
                 use_container_width=True,
                 key=f"set_{level}_{i}",
             ):
@@ -134,12 +171,6 @@ def sidebar_controls(local_storage):
                 st.rerun()
 
     st.sidebar.markdown("---")
-    counts = " ／ ".join(
-        f"{LEVEL_BADGE[lv]}{lv} {sum(1 for q in QUESTIONS if q['level'] == lv)}問"
-        for lv in LEVELS
-    )
-    st.sidebar.caption(f"全{len(QUESTIONS)}問　{counts}")
-
     if st.session_state.get("results") and st.sidebar.button(
         "🗑️ 達成率の記録をリセット", use_container_width=True
     ):
