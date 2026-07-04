@@ -26,13 +26,18 @@ def build_sets(level, size=SET_SIZE):
     return [qs[i : i + size] for i in range(0, len(qs), size)]
 
 
+def all_sets():
+    """全セットを表示順に（ラベル, 問題リスト）のペアで返す。"""
+    sets = []
+    for level in LEVELS:
+        for i, s in enumerate(build_sets(level)):
+            sets.append((f"{level}{i + 1}", s))
+    return sets
+
+
 def all_set_labels():
     """全セットのラベル（例: 易1, 標準3, 難1）を表示順で返す。"""
-    labels = []
-    for level in LEVELS:
-        for i in range(len(build_sets(level))):
-            labels.append(f"{level}{i + 1}")
-    return labels
+    return [label for label, _ in all_sets()]
 
 
 def draw_stats():
@@ -76,6 +81,9 @@ def start_quiz(question_pool, label=None, shuffle=False):
     st.session_state.selected = None    # 選んだ選択肢
     st.session_state.finished = False   # 全問終わったか
     st.session_state.result_saved = False  # 結果を保存済みか
+    # 前のセットで開いた解説をすべて閉じる（問題ごとのキーを消す）
+    for k in [k for k in st.session_state if str(k).startswith("show_expl_")]:
+        del st.session_state[k]
 
 
 # ------------------------------------------------------------------
@@ -178,6 +186,25 @@ def show_question():
 
     badge = LEVEL_BADGE.get(q["level"], "")
     st.caption(f"分野: {q['category']} ｜ 難易度: {badge} {q['level']}")
+
+    # 問題文の上の小さなボタン：答えずに先へ進める（スコアには影響しない）
+    if not st.session_state.answered:
+        if i + 1 < total:
+            if st.button("次の問題を見る"):
+                st.session_state.index += 1
+                st.rerun()
+        else:
+            # セット最後の問題では、次のセットの先頭へ移動できる
+            # （途中で移動してもセットは終了扱いにならず、達成率は保存されない）
+            sets = all_sets()
+            labels = [label for label, _ in sets]
+            current = st.session_state.get("current_set")
+            if current in labels and current != labels[-1]:
+                next_label, next_qs = sets[labels.index(current) + 1]
+                if st.button("次のセットの問題を見る"):
+                    start_quiz(next_qs, label=next_label)
+                    st.rerun()
+
     st.markdown(f"### Q{i + 1}. {q['question']}")
     if q.get("calc"):
         st.warning("🧮 電卓必要！")
@@ -197,6 +224,27 @@ def show_question():
             if selected == q["answer"]:
                 st.session_state.score += 1
             st.rerun()
+
+        # 回答するボタンの下の小さなボタン：クリックしたときだけ解説を表示
+        # 解説（st.info）と同じ水色に見えるようCSSで色を合わせる
+        st.markdown(
+            """
+            <style>
+            .st-key-show_expl_btn button {
+                background-color: rgba(28, 131, 225, 0.1);
+                color: rgb(0, 66, 128);
+                border: 1px solid rgba(28, 131, 225, 0.4);
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        # 解説の表示・非表示は問題ごとに管理する（他の問題に影響しない）
+        expl_key = f"show_expl_{q['id']}"
+        if st.button("解説を見る", key="show_expl_btn"):
+            st.session_state[expl_key] = True
+        if st.session_state.get(expl_key):
+            st.info(f"💡 解説: {q['explanation']}")
 
     # 回答後：正誤と解説を表示
     else:
