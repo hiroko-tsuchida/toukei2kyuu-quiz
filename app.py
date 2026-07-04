@@ -306,8 +306,6 @@ def show_question(local_storage):
                     st.rerun()
 
     st.markdown(f"### Q{i + 1}. {q['question']}")
-    if q.get("calc"):
-        st.warning("🧮 計算機必要！")
 
     # 回答前：選択肢を表示
     if not st.session_state.answered:
