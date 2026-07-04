@@ -17,7 +17,8 @@ st.set_page_config(page_title="統計検定2級 クイズ", page_icon="📊", la
 SET_SIZE = 5  # 1セットあたりの問題数
 LEVELS = ["易", "標準", "難", "実践"]  # 難易度の表示順
 LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴", "実践": "🟣"}
-STORAGE_KEY = "toukei2kyuu_results"  # 端末（localStorage）に保存するキー
+STORAGE_KEY = "toukei2kyuu_results"  # 達成率を端末（localStorage）に保存するキー
+RESUME_KEY = "toukei2kyuu_resume"    # 中断したセットの「しおり」を保存するキー
 
 
 def build_sets(level, size=SET_SIZE):
@@ -38,6 +39,14 @@ def all_sets():
 def all_set_labels():
     """全セットのラベル（例: 易1, 標準3, 難1）を表示順で返す。"""
     return [label for label, _ in all_sets()]
+
+
+def set_by_label(label):
+    """ラベル（例: 標準3）からそのセットの問題リストを返す。なければ None。"""
+    for lbl, qs in all_sets():
+        if lbl == label:
+            return qs
+    return None
 
 
 def draw_stats():
@@ -66,21 +75,29 @@ def init_state(local_storage):
             st.session_state.results = json.loads(raw) if raw else {}
         except (ValueError, TypeError):
             st.session_state.results = {}
+    if "resume" not in st.session_state:
+        # 中断したセットの「しおり」を読み込む（なければ None）
+        raw = local_storage.getItem(RESUME_KEY)
+        try:
+            st.session_state.resume = json.loads(raw) if raw else None
+        except (ValueError, TypeError):
+            st.session_state.resume = None
 
 
-def start_quiz(question_pool, label=None, shuffle=False):
-    """選んだ問題で新しいクイズを始める。"""
+def start_quiz(question_pool, label=None, shuffle=False, start_index=0, start_score=0):
+    """選んだ問題でクイズを始める。start_index/start_score を指定すると途中から再開できる。"""
     pool = list(question_pool)
     if shuffle:
         random.shuffle(pool)
     st.session_state.order = pool
     st.session_state.current_set = label  # いま挑戦中のセット名
-    st.session_state.index = 0          # 今が何問目か
-    st.session_state.score = 0          # 正解数
+    st.session_state.index = start_index  # 今が何問目か（再開時はその位置から）
+    st.session_state.score = start_score  # 正解数（再開時はそれまでの分を引き継ぐ）
     st.session_state.answered = False   # 現在の問題に回答済みか
     st.session_state.selected = None    # 選んだ選択肢
     st.session_state.finished = False   # 全問終わったか
     st.session_state.result_saved = False  # 結果を保存済みか
+    st.session_state.reviews = {}       # 問題id → 正誤・選んだ答え の記録
     # 前のセットで開いた解説をすべて閉じる（問題ごとのキーを消す）
     for k in [k for k in st.session_state if str(k).startswith("show_expl_")]:
         del st.session_state[k]
@@ -102,6 +119,12 @@ def sidebar_controls(local_storage):
         results = st.session_state.get("results", {})
         for i, s in enumerate(sets):
             label = f"{level}{i + 1}"
+            # ボタンの上にそのセットの達成率を表示する
+            if label in results:
+                rate = results[label]
+                st.sidebar.progress(rate / 100, text=f"達成率 {rate:.0f}%")
+            else:
+                st.sidebar.caption("　未挑戦")
             if st.sidebar.button(
                 f"セット{i + 1}（{len(s)}問）",
                 use_container_width=True,
@@ -109,12 +132,6 @@ def sidebar_controls(local_storage):
             ):
                 start_quiz(s, label=label)
                 st.rerun()
-            # ボタンの下にそのセットの達成率を表示する
-            if label in results:
-                rate = results[label]
-                st.sidebar.progress(rate / 100, text=f"達成率 {rate:.0f}%")
-            else:
-                st.sidebar.caption("　未挑戦")
 
     st.sidebar.markdown("---")
     counts = " ／ ".join(
@@ -147,16 +164,23 @@ def record_result(local_storage):
         st.session_state.results[label] = rate
         local_storage.setItem(STORAGE_KEY, json.dumps(st.session_state.results))
     st.session_state.result_saved = True
+    # このセットを最後まで解いたら、同じセットのしおりは用済みなので消す
+    resume = st.session_state.get("resume")
+    if resume and resume.get("label") == label:
+        st.session_state.resume = None
+        local_storage.setItem(RESUME_KEY, json.dumps(None))
     # 全セット制覇した瞬間だけ風船を飛ばす
     if len(st.session_state.results) == len(all_set_labels()):
         st.balloons()
 
 
 def show_result():
-    total = len(st.session_state.order)
+    order = st.session_state.order
+    total = len(order)
     score = st.session_state.score
     rate = score / total * 100 if total else 0
     label = st.session_state.get("current_set")
+    reviews = st.session_state.get("reviews", {})
 
     st.subheader("🎉 おつかれさまでした！")
     set_name = f"（{label}）" if label else ""
@@ -169,6 +193,34 @@ def show_result():
     else:
         st.warning("やさしい問題（易）から見直すと伸びます。あせらず復習しましょう。")
 
+    # 各問題の正誤一覧を表示する
+    st.markdown("#### 📋 結果一覧")
+    wrong_qs = []  # 間違えた問題（再挑戦用）
+    for idx, q in enumerate(order, start=1):
+        title = q["question"]
+        if len(title) > 30:
+            title = title[:30] + "…"
+        r = reviews.get(q["id"])
+        if r is None:
+            st.markdown(f"{idx}. ⬜ 未回答　{title}")
+        elif r["correct"]:
+            st.markdown(f"{idx}. ✅ {title}")
+        else:
+            wrong_qs.append(q)
+            st.markdown(f"{idx}. ❌ {title}　→ 正解: {q['choices'][q['answer']]}")
+
+    # 間違えた問題だけをもう一度解き直すボタン
+    if wrong_qs:
+        if st.button(
+            f"🔁 間違えた問題をもう一度（{len(wrong_qs)}問）",
+            use_container_width=True,
+        ):
+            # 達成率には影響しない練習モードとして解き直す（label は付けない）
+            start_quiz(wrong_qs, label=None)
+            st.rerun()
+    else:
+        st.success("全問正解！このセットは完璧です 🎉")
+
     st.markdown("#### 📈 あなたの成績")
     draw_stats()
 
@@ -178,7 +230,24 @@ def show_result():
 # ------------------------------------------------------------------
 # 問題画面
 # ------------------------------------------------------------------
-def show_question():
+def stop_for_today(local_storage, next_index):
+    """『今日はここまで』：次回このセットの続き（next_index 番目）から始められるよう
+    しおりを保存してホームに戻る。練習モード（ラベルなし）では何もしない。"""
+    label = st.session_state.get("current_set")
+    if not label:
+        return
+    resume = {
+        "label": label,
+        "index": next_index,          # 次回このセットで最初に解く問題の位置
+        "score": st.session_state.score,  # ここまでの正解数を引き継ぐ
+    }
+    st.session_state.resume = resume
+    local_storage.setItem(RESUME_KEY, json.dumps(resume))
+    st.session_state.order = None     # ホームに戻って中断する
+    st.rerun()
+
+
+def show_question(local_storage):
     order = st.session_state.order
     i = st.session_state.index
     q = order[i]
@@ -223,6 +292,11 @@ def show_question():
             st.session_state.answered = True
             if selected == q["answer"]:
                 st.session_state.score += 1
+            # あとで結果一覧に出せるよう、正誤を問題ごとに記録する
+            st.session_state.setdefault("reviews", {})[q["id"]] = {
+                "selected": selected,
+                "correct": selected == q["answer"],
+            }
             st.rerun()
 
         # 回答するボタンの下の小さなボタン：クリックしたときだけ解説を表示
@@ -264,15 +338,29 @@ def show_question():
 
         st.info(f"💡 解説: {q['explanation']}")
 
-        label = "次の問題へ" if i + 1 < total else "結果を見る"
-        if st.button(label, use_container_width=True):
-            st.session_state.answered = False
-            st.session_state.selected = None
-            if i + 1 < total:
-                st.session_state.index += 1
+        if i + 1 < total:
+            # 「次の問題へ」の隣に「🌙今日はここまで」を並べる（練習モードでは次の問題へのみ）
+            if st.session_state.get("current_set"):
+                col_next, col_stop = st.columns(2)
+                next_clicked = col_next.button("次の問題へ", use_container_width=True)
+                stop_clicked = col_stop.button("🌙 今日はここまで", use_container_width=True)
             else:
+                next_clicked = st.button("次の問題へ", use_container_width=True)
+                stop_clicked = False
+            if next_clicked:
+                st.session_state.answered = False
+                st.session_state.selected = None
+                st.session_state.index += 1
+                st.rerun()
+            if stop_clicked:
+                # 次の問題から次回再開する
+                stop_for_today(local_storage, i + 1)
+        else:
+            if st.button("結果を見る", use_container_width=True):
+                st.session_state.answered = False
+                st.session_state.selected = None
                 st.session_state.finished = True
-            st.rerun()
+                st.rerun()
 
     # 現在のスコアをそっと表示
     st.caption(f"現在のスコア: {st.session_state.score} 問正解")
@@ -295,6 +383,27 @@ def main():
     sidebar_controls(local_storage)
 
     if st.session_state.order is None:
+        # 中断したセットがあれば、続きから再開できるボタンを出す
+        resume = st.session_state.get("resume")
+        if resume and set_by_label(resume.get("label")) is not None:
+            qs = set_by_label(resume["label"])
+            remaining = len(qs) - resume["index"]
+            if remaining > 0:
+                st.success(
+                    f"🌙 前回は「{resume['label']}」を途中で終了しました。"
+                    f"続きから始められます（残り{remaining}問）。"
+                )
+                if st.button("▶️ 前回の続きから始める", use_container_width=True):
+                    start_quiz(
+                        qs,
+                        label=resume["label"],
+                        start_index=resume["index"],
+                        start_score=resume["score"],
+                    )
+                    st.session_state.resume = None
+                    local_storage.setItem(RESUME_KEY, json.dumps(None))
+                    st.rerun()
+
         st.info("👈 左のサイドバーから出題セット（易・標準・難・実践）を選ぶと、クイズが始まります。")
         st.markdown(
             f"- 各セットは**{SET_SIZE}問**ずつに分かれています\n"
@@ -306,7 +415,7 @@ def main():
     elif st.session_state.finished:
         show_result()
     else:
-        show_question()
+        show_question(local_storage)
 
 
 if __name__ == "__main__":
