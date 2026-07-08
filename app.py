@@ -144,6 +144,18 @@ def set_by_label(label):
     return None
 
 
+def question_info():
+    """問題id → (通し番号, セット名) の辞書を表示順で返す。
+    通し番号はセットの並び順に全問へ振った連番（例: 易1がQ1〜Q5、易2がQ6〜Q10…）。"""
+    info = {}
+    n = 0
+    for label, qs in all_sets():
+        for q in qs:
+            n += 1
+            info[q["id"]] = (n, label)
+    return info
+
+
 def draw_stats():
     """成績ダッシュボード（全制覇のお知らせと案内）を表示する。"""
     results = st.session_state.get("results", {})
@@ -322,18 +334,20 @@ def show_result():
     # 各問題の正誤一覧を表示する
     st.markdown("#### 📋 結果一覧")
     wrong_qs = []  # 間違えた問題（再挑戦用）
+    info = question_info()
     for idx, q in enumerate(order, start=1):
+        num = info.get(q["id"], (idx, None))[0]  # 通し番号（見つからなければセット内番号）
         title = q["question"]
         if len(title) > 30:
             title = title[:30] + "…"
         r = reviews.get(q["id"])
         if r is None:
-            st.markdown(f"{idx}. ⬜ 未回答　{title}")
+            st.markdown(f"Q{num}. ⬜ 未回答　{title}")
         elif r["correct"]:
-            st.markdown(f"{idx}. ✅ {title}")
+            st.markdown(f"Q{num}. ✅ {title}")
         else:
             wrong_qs.append(q)
-            st.markdown(f"{idx}. ❌ {title}　→ 正解: {q['choices'][q['answer']]}")
+            st.markdown(f"Q{num}. ❌ {title}　→ 正解: {q['choices'][q['answer']]}")
 
     # 間違えた問題だけをもう一度解き直すボタン
     if wrong_qs:
@@ -387,7 +401,12 @@ def show_question(local_storage):
     total = len(order)
 
     badge = LEVEL_BADGE.get(q["level"], "")
-    st.caption(f"分野: {q['category']} ｜ 難易度: {badge} {q['level']}")
+    num, set_label = question_info().get(q["id"], (i + 1, None))
+    set_part = f" ｜ セット: {set_label}" if set_label else ""
+    st.caption(
+        f"分野: {q['category']} ｜ 難易度: {badge} {q['level']}{set_part}"
+        f"（{i + 1}/{total}問目）"
+    )
 
     # 問題文の上の小さなボタン：答えずに先へ進める（スコアには影響しない）
     if not st.session_state.answered:
@@ -407,7 +426,7 @@ def show_question(local_storage):
                     start_quiz(next_qs, label=next_label)
                     st.rerun()
 
-    st.markdown(f"### Q{i + 1}. {q['question']}")
+    st.markdown(f"### Q{num}. {q['question']}")
 
     # 回答前：選択肢を表示
     if not st.session_state.answered:
