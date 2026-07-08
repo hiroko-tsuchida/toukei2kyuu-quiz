@@ -34,7 +34,6 @@ streamlit run app.py
 |---|---|
 | `app.py` | アプリ本体（Streamlit） |
 | `questions.py` | 問題データ（選択式・解説つき） |
-| `問題.md` / `解答・解説.md` | 読み物版の問題集 |
 | `requirements.txt` | 依存パッケージ |
 
 ## デプロイ
