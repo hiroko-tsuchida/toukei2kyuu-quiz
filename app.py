@@ -54,8 +54,8 @@ def draw_stats():
     results = st.session_state.get("results", {})
     total = len(all_set_labels())
 
-    # 全セット制覇のお知らせ
-    if results and len(results) == total:
+    # 全セット制覇のお知らせ（途中で終了したセット＝しおりが残っている間は出さない）
+    if results and len(results) == total and st.session_state.get("resume") is None:
         st.success(f"🎉 全{total}セット制覇！コンプリートおめでとうございます！")
 
     st.caption("※ セットごとの達成率は、左のサイドバーの各セットの下に表示されます。")
@@ -153,12 +153,10 @@ def sidebar_controls(local_storage):
         results = st.session_state.get("results", {})
         for i, s in enumerate(sets):
             label = f"{level}{i + 1}"
-            # ボタンの上にそのセットの達成率を表示する
-            if label in results:
-                rate = results[label]
-                st.sidebar.progress(rate / 100, text=f"達成率 {rate:.0f}%")
-            else:
-                st.sidebar.caption("　未挑戦")
+            # ボタンの上にそのセットの達成率バーを表示する（未挑戦でも0%で表示）
+            rate = results.get(label, 0)
+            suffix = "" if label in results else "（未挑戦）"
+            st.sidebar.progress(rate / 100, text=f"達成率 {rate:.0f}%{suffix}")
             # そのセットに含まれる分野を（重複を除き順番どおりに）並べる
             # 分野名に「・」が入るものがあるので、区切りは「／」を使う
             cats = "／".join(dict.fromkeys(q["category"] for q in s))
@@ -175,7 +173,7 @@ def sidebar_controls(local_storage):
         "🗑️ 達成率の記録をリセット", use_container_width=True
     ):
         st.session_state.results = {}
-        local_storage.setItem(STORAGE_KEY, json.dumps({}))
+        local_storage.setItem(STORAGE_KEY, json.dumps({}), key="set_results_reset")
         st.rerun()
 
 
@@ -193,15 +191,17 @@ def record_result(local_storage):
     rate = score / total * 100 if total else 0
     if label:
         st.session_state.results[label] = rate
-        local_storage.setItem(STORAGE_KEY, json.dumps(st.session_state.results))
+        local_storage.setItem(
+            STORAGE_KEY, json.dumps(st.session_state.results), key="set_results_record"
+        )
     st.session_state.result_saved = True
     # このセットを最後まで解いたら、同じセットのしおりは用済みなので消す
     resume = st.session_state.get("resume")
     if resume and resume.get("label") == label:
         st.session_state.resume = None
-        local_storage.setItem(RESUME_KEY, json.dumps(None))
-    # 全セット制覇した瞬間だけ風船を飛ばす
-    if len(st.session_state.results) == len(all_set_labels()):
+        local_storage.setItem(RESUME_KEY, json.dumps(None), key="set_resume_record")
+    # 全セット制覇した瞬間だけ風船を飛ばす（しおりが残っている間は未制覇扱い）
+    if len(st.session_state.results) == len(all_set_labels()) and st.session_state.get("resume") is None:
         st.balloons()
 
 
@@ -273,7 +273,14 @@ def stop_for_today(local_storage, next_index):
         "score": st.session_state.score,  # ここまでの正解数を引き継ぐ
     }
     st.session_state.resume = resume
-    local_storage.setItem(RESUME_KEY, json.dumps(resume))
+    local_storage.setItem(RESUME_KEY, json.dumps(resume), key="set_resume_stop")
+    # ここまでの達成率（正解数 ÷ セット全問数）も保存して、サイドバーのバーに反映する
+    total = len(st.session_state.order)
+    if total:
+        st.session_state.results[label] = st.session_state.score / total * 100
+        local_storage.setItem(
+            STORAGE_KEY, json.dumps(st.session_state.results), key="set_results_stop"
+        )
     st.session_state.order = None     # ホームに戻って中断する
     st.rerun()
 
@@ -430,7 +437,7 @@ def main():
                         start_score=resume["score"],
                     )
                     st.session_state.resume = None
-                    local_storage.setItem(RESUME_KEY, json.dumps(None))
+                    local_storage.setItem(RESUME_KEY, json.dumps(None), key="set_resume_restart")
                     st.rerun()
 
         st.info("👈 左のサイドバーから出題セット（易・標準・難・実践）を選ぶと、クイズが始まります。")
