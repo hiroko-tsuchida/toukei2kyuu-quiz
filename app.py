@@ -4,8 +4,10 @@
     streamlit run app.py
 """
 
+import html
 import json
 import random
+import re
 
 import streamlit as st
 from streamlit_local_storage import LocalStorage
@@ -19,6 +21,95 @@ LEVELS = ["易", "標準", "難", "実践"]  # 難易度の表示順
 LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴", "実践": "🟣"}
 STORAGE_KEY = "toukei2kyuu_results"  # 達成率を端末（localStorage）に保存するキー
 RESUME_KEY = "toukei2kyuu_resume"    # 中断したセットの「しおり」を保存するキー
+
+
+# ------------------------------------------------------------------
+# 解説の中の計算式を、大きな数式（LaTeX）に変換して表示する仕組み
+# ------------------------------------------------------------------
+# 解説文の中の「計算式らしき部分」（数字と演算記号の並び）を見つける正規表現
+_FORMULA_RE = re.compile(r"[A-Za-zλσμπ0-9０-９+＋\-−×÷=＝≒≈√%.,^/|()²³± ]+")
+# 分数の分子・分母になれるかたまり（カッコ書き・数値・√・変換済みの分数など）
+_OPERAND = r"(\([^()]*\)|(?:\\sqrt\{[^{}]*\}|\\dfrac\{[^{}]*\}\{[^{}]*\}|[0-9.²³A-Za-zλσμπ])+)"
+
+
+def _strip_parens(s):
+    """分数の分子・分母を囲むだけの外側カッコを外す（見た目をすっきりさせる）。"""
+    if s.startswith("(") and s.endswith(")") and s.count("(") == 1 and s.count(")") == 1:
+        return s[1:-1]
+    return s
+
+
+def _to_latex(t):
+    """式のテキストをLaTeX形式に変換する。÷ や / は分数の形（縦積み）にする。"""
+    t = t.translate(str.maketrans("０１２３４５６７８９＝＋", "0123456789=+"))
+    t = t.replace("−", "-").replace("≈", "≒")
+    t = re.sub(r"\^\(([^()]*)\)", r"^{\1}", t)  # e^(-2) の指数部分
+    # √(…) → ルート記号（√(np(1-p)) のようにカッコが1段入れ子でもOK）
+    t = re.sub(r"√\(((?:[^()]|\([^()]*\))*)\)", r"\\sqrt{\1}", t)
+    t = re.sub(r"√([0-9.A-Za-zλσμπ]+)", r"\\sqrt{\1}", t)  # √36 → ルート記号
+
+    def frac(m):
+        return "\\dfrac{%s}{%s}" % (_strip_parens(m.group(1)), _strip_parens(m.group(2)))
+
+    # ÷ と /（数字の間の割り算）を分数に変換する。連続する割り算にも対応
+    for op in ("÷", "/"):
+        pattern = re.compile(_OPERAND + r"\s*" + re.escape(op) + r"\s*" + _OPERAND)
+        prev = None
+        while prev != t:
+            prev = t
+            t = pattern.sub(frac, t, count=1)
+
+    return (
+        t.replace("×", r"\times ")
+        .replace("±", r"\pm ")
+        .replace("≒", r"\fallingdotseq ")
+        .replace("%", r"\% ")
+        .replace("²", "^2")
+        .replace("³", "^3")
+        .replace("λ", r"\lambda ")
+        .replace("σ", r"\sigma ")
+        .replace("μ", r"\mu ")
+        .replace("π", r"\pi ")
+    )
+
+
+def format_explanation(text):
+    """解説文の中の計算式を検出し、大きな数式表示（$\\large …$）に置き換える。
+    表の行（| で始まる行）は表の区切り記号を壊さないよう、そのまま表示する。"""
+
+    def repl(m):
+        s = m.group(0)
+        core = s.strip()
+        # 数字を含み、かつ計算らしい記号（= ≒ ÷ × √ ± ^ や分数の /）があるものだけ数式にする
+        if not re.search(r"[0-9０-９]", core):
+            return s
+        if not re.search(r"[=＝≒≈÷×√±^]|[0-9０-９]\s*/\s*[0-9０-９]", core):
+            return s
+        latex = _to_latex(core)
+        # 日本語が混ざるなどで変換しきれなかった式は、元のテキストのまま表示する
+        if (
+            "÷" in latex
+            or "√" in latex
+            or latex.count("{") != latex.count("}")
+            or latex.count("(") != latex.count(")")
+        ):
+            return s
+        lead = s[: len(s) - len(s.lstrip())]
+        trail = s[len(s.rstrip()) :]
+        # 閉じる $ の直前にスペースがあると数式として認識されないため、末尾の空白を取り除く
+        return f"{lead}$\\large {latex.rstrip()}$" + trail
+
+    lines = [
+        line if line.lstrip().startswith("|") else _FORMULA_RE.sub(repl, line)
+        for line in text.split("\n")
+    ]
+    # 数式の直後に句点が残ると見た目がよくないので、「…$。」の『。』は取り除く
+    return re.sub(r"\$[ 　]*。", "$", "\n".join(lines))
+
+
+def show_explanation(q):
+    """解説を表示する（計算式は大きな数式として描画される）。"""
+    st.info(f"💡 解説: {format_explanation(q['explanation'])}")
 
 
 def build_sets(level, size=SET_SIZE):
@@ -354,7 +445,7 @@ def show_question(local_storage):
         if st.button("解説を見る", key="show_expl_btn"):
             st.session_state[expl_key] = True
         if st.session_state.get(expl_key):
-            st.info(f"💡 解説: {q['explanation']}")
+            show_explanation(q)
 
     # 回答後：正誤と解説を表示
     else:
@@ -372,7 +463,7 @@ def show_question(local_storage):
         else:
             st.error("不正解…")
 
-        st.info(f"💡 解説: {q['explanation']}")
+        show_explanation(q)
 
         if i + 1 < total:
             # 「次の問題へ」の隣に「🌙今日はここまで」を並べる（練習モードでは次の問題へのみ）
