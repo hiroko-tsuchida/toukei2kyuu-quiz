@@ -19,8 +19,11 @@ st.set_page_config(page_title="統計検定2級 クイズ", page_icon="📊", la
 SET_SIZE = 5  # 1セットあたりの問題数
 LEVELS = ["易", "標準", "難", "実践"]  # 難易度の表示順
 LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴", "実践": "🟣"}
-STORAGE_KEY = "toukei2kyuu_results"  # 達成率を端末（localStorage）に保存するキー
-RESUME_KEY = "toukei2kyuu_resume"    # 中断したセットの「しおり」を保存するキー
+# 達成率・しおりを端末（localStorage）に保存するキー。
+# セット構成を変えたときは末尾の版数を上げて、古い記録が別セットの成績として
+# 誤って表示されないようにする（記録はリセットされる）
+STORAGE_KEY = "toukei2kyuu_results_v2"
+RESUME_KEY = "toukei2kyuu_resume_v2"
 
 
 # ------------------------------------------------------------------
