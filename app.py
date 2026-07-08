@@ -402,6 +402,9 @@ def show_question(local_storage):
 
     badge = LEVEL_BADGE.get(q["level"], "")
     num, set_label = question_info().get(q["id"], (i + 1, None))
+    # セット名の難易度部分は「難易度:」欄と重複するので、番号だけを表示する（標準3 → 3）
+    if set_label and set_label.startswith(q["level"]):
+        set_label = set_label[len(q["level"]):]
     set_part = f" ｜ セット: {set_label}" if set_label else ""
     st.caption(
         f"分野: {q['category']} ｜ 難易度: {badge} {q['level']}{set_part}"
