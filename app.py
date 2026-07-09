@@ -16,6 +16,24 @@ from questions import QUESTIONS
 
 st.set_page_config(page_title="学習ストレスが少ない💬統計検定2級問題集", page_icon="📊", layout="centered")
 
+# アプリ全体のフォントを丸ゴシック（Zen Maru Gothic）にして読みやすくする。
+# 数式（KaTeX）とアイコンだけは専用フォントのままにする
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap');
+    [data-testid="stAppViewContainer"] *:not(.katex):not(.katex *),
+    [data-testid="stSidebar"] *:not(.katex):not(.katex *) {
+        font-family: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+    }
+    [data-testid="stIconMaterial"] {
+        font-family: "Material Symbols Rounded" !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 SET_SIZE = 5  # 1セットあたりの問題数
 LEVELS = ["易", "標準", "難", "実践"]  # 難易度の表示順
 LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴", "実践": "🟣"}
