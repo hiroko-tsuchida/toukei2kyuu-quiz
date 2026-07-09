@@ -534,7 +534,21 @@ def show_question(local_storage):
 # メイン
 # ------------------------------------------------------------------
 def main():
-    st.title("ストレスが少ない💬統計検定2級問題集")
+    st.markdown(
+        """
+<div style="margin:0.3rem 0 0.8rem 0;">
+  <div style="display:inline-block; position:relative; background:#4caf7d; color:#ffffff;
+              padding:0.35rem 1rem; border-radius:1.2rem; font-size:1.1rem; font-weight:700;">
+    ストレスが少ない
+    <div style="position:absolute; bottom:-0.5rem; left:1.4rem; width:0; height:0;
+                border-left:0.45rem solid transparent; border-right:0.45rem solid transparent;
+                border-top:0.55rem solid #4caf7d;"></div>
+  </div>
+  <h1 style="margin:0.55rem 0 0 0; padding:0;">統計検定2級問題集</h1>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
     st.caption("選択式の問題に答えて、その場で解説を確認できます。")
 
     local_storage = LocalStorage()
