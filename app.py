@@ -142,7 +142,7 @@ def format_explanation(text):
 
 def show_explanation(q):
     """解説を表示する（計算式は大きな数式として描画される）。"""
-    st.info(f"💡 解説: {format_explanation(q['explanation'])}")
+    st.info(f"📖 解説: {format_explanation(q['explanation'])}")
 
 
 def build_sets(level, size=SET_SIZE):
@@ -232,8 +232,8 @@ def start_quiz(question_pool, label=None, shuffle=False, start_index=0, start_sc
     st.session_state.finished = False   # 全問終わったか
     st.session_state.result_saved = False  # 結果を保存済みか
     st.session_state.reviews = {}       # 問題id → 正誤・選んだ答え の記録
-    # 前のセットで開いた解説をすべて閉じる（問題ごとのキーを消す）
-    for k in [k for k in st.session_state if str(k).startswith("show_expl_")]:
+    # 前のセットで開いたヒント・解説をすべて閉じる（問題ごとのキーを消す）
+    for k in [k for k in st.session_state if str(k).startswith(("show_expl_", "show_hint_"))]:
         del st.session_state[k]
 
 
@@ -478,11 +478,16 @@ def show_question(local_storage):
             }
             st.rerun()
 
-        # 回答するボタンの下の小さなボタン：クリックしたときだけ解説を表示
-        # 解説（st.info）と同じ水色に見えるようCSSで色を合わせる
+        # 回答するボタンの下の小さなボタン：クリックしたときだけヒント・解説を表示
+        # ヒント（st.warning）は黄色、解説（st.info）は水色に見えるようCSSで色を合わせる
         st.markdown(
             """
             <style>
+            .st-key-show_hint_btn button {
+                background-color: rgba(255, 193, 7, 0.1);
+                color: rgb(146, 108, 5);
+                border: 1px solid rgba(255, 193, 7, 0.4);
+            }
             .st-key-show_expl_btn button {
                 background-color: rgba(28, 131, 225, 0.1);
                 color: rgb(0, 66, 128);
@@ -492,10 +497,16 @@ def show_question(local_storage):
             """,
             unsafe_allow_html=True,
         )
-        # 解説の表示・非表示は問題ごとに管理する（他の問題に影響しない）
+        # ヒント・解説の表示・非表示は問題ごとに管理する（他の問題に影響しない）
+        hint_key = f"show_hint_{q['id']}"
         expl_key = f"show_expl_{q['id']}"
-        if st.button("解説を見る", key="show_expl_btn"):
+        col_hint, col_expl = st.columns(2)
+        if col_hint.button("💡 ヒントを見る", key="show_hint_btn", use_container_width=True):
+            st.session_state[hint_key] = True
+        if col_expl.button("📖 解説を見る", key="show_expl_btn", use_container_width=True):
             st.session_state[expl_key] = True
+        if st.session_state.get(hint_key):
+            st.warning(f"💡 ヒント: {q['hint']}")
         if st.session_state.get(expl_key):
             show_explanation(q)
 
