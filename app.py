@@ -549,7 +549,7 @@ def main():
 """,
         unsafe_allow_html=True,
     )
-    st.caption("問題に答える前に解答例を見ることができます。また、紙の書籍のように、どんな問題があるのか全体を眺めることができます。")
+    st.caption("問題に答える前に解説を見ることができます。また、紙の書籍のように、どんな問題があるのか全体を眺めることができます。")
 
     local_storage = LocalStorage()
     init_state(local_storage)
