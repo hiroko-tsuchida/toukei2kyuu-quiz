@@ -168,15 +168,13 @@ def question_info():
 
 
 def draw_stats():
-    """成績ダッシュボード（全制覇のお知らせと案内）を表示する。"""
+    """全セット制覇のお知らせを表示する。"""
     results = st.session_state.get("results", {})
     total = len(all_set_labels())
 
     # 全セット制覇のお知らせ（途中で終了したセット＝しおりが残っている間は出さない）
     if results and len(results) == total and st.session_state.get("resume") is None:
         st.success(f"🎉 全{total}セット制覇！コンプリートおめでとうございます！")
-
-    st.caption("※ セットごとの達成率は、左のサイドバーの各セットの下に表示されます。")
 
 
 # ------------------------------------------------------------------
@@ -372,7 +370,6 @@ def show_result():
     else:
         st.success("全問正解！このセットは完璧です 🎉")
 
-    st.markdown("#### 📈 あなたの成績")
     draw_stats()
 
     st.caption("← サイドバーのセットボタンから次の問題に挑戦できます。")
@@ -588,7 +585,6 @@ def main():
             "- 答えを選ぶと、その場で正誤と解説が表示されます\n"
             "- 達成率は端末に保存され、次に開いたときも残ります"
         )
-        st.markdown("#### 📈 あなたの成績")
         draw_stats()
     elif st.session_state.finished:
         show_result()
