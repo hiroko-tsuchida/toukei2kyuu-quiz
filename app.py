@@ -14,7 +14,7 @@ from streamlit_local_storage import LocalStorage
 
 from questions import QUESTIONS
 
-st.set_page_config(page_title="ストレスが少ない💬統計検定2級問題集", page_icon="📊", layout="centered")
+st.set_page_config(page_title="学習ストレスが少ない💬統計検定2級問題集", page_icon="📊", layout="centered")
 
 SET_SIZE = 5  # 1セットあたりの問題数
 LEVELS = ["易", "標準", "難", "実践"]  # 難易度の表示順
@@ -539,7 +539,7 @@ def main():
 <div style="margin:0.3rem 0 0.8rem 0;">
   <div style="display:inline-block; position:relative; background:#4caf7d; color:#ffffff;
               padding:0.35rem 1rem; border-radius:1.2rem; font-size:1.1rem; font-weight:700;">
-    ストレスが少ない
+    学習ストレスが少ない
     <div style="position:absolute; bottom:-0.5rem; left:1.4rem; width:0; height:0;
                 border-left:0.45rem solid transparent; border-right:0.45rem solid transparent;
                 border-top:0.55rem solid #4caf7d;"></div>
