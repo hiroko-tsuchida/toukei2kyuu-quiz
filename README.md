@@ -1,4 +1,4 @@
-# 統計検定2級 クイズアプリ 📊
+# ストレスが少ない💬統計検定2級問題集
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://toukei2kyuu-quiz.streamlit.app)
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)

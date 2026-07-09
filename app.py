@@ -14,7 +14,7 @@ from streamlit_local_storage import LocalStorage
 
 from questions import QUESTIONS
 
-st.set_page_config(page_title="統計検定2級 クイズ", page_icon="📊", layout="centered")
+st.set_page_config(page_title="ストレスが少ない💬統計検定2級問題集", page_icon="📊", layout="centered")
 
 SET_SIZE = 5  # 1セットあたりの問題数
 LEVELS = ["易", "標準", "難", "実践"]  # 難易度の表示順
@@ -534,7 +534,7 @@ def show_question(local_storage):
 # メイン
 # ------------------------------------------------------------------
 def main():
-    st.title("📊 統計検定2級 クイズ")
+    st.title("ストレスが少ない💬統計検定2級問題集")
     st.caption("選択式の問題に答えて、その場で解説を確認できます。")
 
     local_storage = LocalStorage()
