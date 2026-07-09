@@ -579,7 +579,7 @@ def main():
                     local_storage.setItem(RESUME_KEY, json.dumps(None), key="set_resume_restart")
                     st.rerun()
 
-        st.info("👈 左のサイドバーから出題セット（易・標準・難・実践）を選ぶと、クイズが始まります。")
+        st.info("👈 左のサイドバーから出題セット（易・標準・難・実践）を選ぶと、問題集が始まります。")
         st.markdown(
             f"- 各セットは**{SET_SIZE}問**ずつに分かれています\n"
             "- 答えを選ぶと、その場で正誤と解説が表示されます\n"
