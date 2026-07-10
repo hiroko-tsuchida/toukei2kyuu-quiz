@@ -40,8 +40,8 @@ LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴", "実践": "🟣"}
 # 達成率・しおりを端末（localStorage）に保存するキー。
 # セット構成を変えたときは末尾の版数を上げて、古い記録が別セットの成績として
 # 誤って表示されないようにする（記録はリセットされる）
-STORAGE_KEY = "toukei2kyuu_results_v2"
-RESUME_KEY = "toukei2kyuu_resume_v2"
+STORAGE_KEY = "toukei2kyuu_results_v3"
+RESUME_KEY = "toukei2kyuu_resume_v3"
 
 
 # ------------------------------------------------------------------
