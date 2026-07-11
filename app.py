@@ -12,6 +12,7 @@ import re
 import streamlit as st
 from streamlit_local_storage import LocalStorage
 
+import figures
 from questions import QUESTIONS
 
 st.set_page_config(page_title="学習ストレスが少ない💬統計検定2級問題集", page_icon="📊", layout="centered")
@@ -141,8 +142,11 @@ def format_explanation(text):
 
 
 def show_explanation(q):
-    """解説を表示する（計算式は大きな数式として描画される）。"""
+    """解説を表示する（計算式は大きな数式として描画される）。
+    問題に "figure" キーがあれば、解説の下に図（SVG）も表示する。"""
     st.info(f"📖 解説: {format_explanation(q['explanation'])}")
+    if "figure" in q:
+        st.markdown(figures.render(q["figure"]), unsafe_allow_html=True)
 
 
 def build_sets(level, size=SET_SIZE):
