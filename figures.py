@@ -77,11 +77,12 @@ def _wrap(body):
     )
 
 
-def _clip(v, lo=-3.4, hi=3.4):
-    """ラベル位置の計算用に、無限大（None）を図の端の少し内側に置き換える。"""
+def _clip(v, side):
+    """ラベル位置の計算用に、無限大（None）を図の端の少し内側に置き換える。
+    side=-1 は区間の左端（from側→左端へ）、side=+1 は右端（to側→右端へ）。"""
     if v is None:
-        return lo if lo < 0 else hi
-    return max(lo, min(hi, v))
+        return -3.3 if side < 0 else 3.3
+    return max(-3.3, min(3.3, v))
 
 
 def _normal_area(spec):
@@ -112,10 +113,15 @@ def _normal_area(spec):
                 marks[v] = marks.get(v, False) or color_name == "red"
         # ラベルは領域の真ん中あたりに。曲線が低い（裾）なら曲線の上に出す
         if r.get("label"):
-            zm = (_clip(a, -3.3, 3.3) + _clip(b, -3.3, 3.3)) / 2
+            zm = (_clip(a, -1) + _clip(b, +1)) / 2
             # 統計量マーカーと重なりそうなら、外側へ少しずらす
             if stat is not None and abs(zm - stat) < 0.55:
                 zm += -0.6 if zm <= 0 else 0.6
+            # 裾のラベルは境界の破線と重ならないよう、境界から一定以上離す
+            if a is None and b is not None:  # 左裾
+                zm = max(-3.15, min(zm, _clip(b, +1) - 0.55))
+            elif b is None and a is not None:  # 右裾
+                zm = min(3.15, max(zm, _clip(a, -1) + 0.55))
             d = _pdf(zm)
             if d < 0.075:  # 裾：曲線の上に置く
                 lx, ly = _x(zm), _y(d) - 10
@@ -144,7 +150,7 @@ def _normal_area(spec):
 
     # 目盛り：整数（境界と重なるところは省く）＋ 境界の値（太字）
     for t in range(-3, 4):
-        if any(abs(t - v) < 0.45 for v in marks):
+        if any(abs(t - v) < 0.6 for v in marks):
             continue
         parts.append(
             f'<line x1="{_x(t):.1f}" y1="{_y(0):.1f}" x2="{_x(t):.1f}" '
@@ -288,10 +294,17 @@ def _ci_repeat(spec):
             f'<circle cx="{x(off):.1f}" cy="{y:.1f}" r="2.5" fill="{color}"/>'
         )
         if miss:
-            parts.append(
-                _text("★ 外れ", x(off + half) + 8, y + 4, size=11.5,
-                      color=color, weight="bold", anchor="start")
-            )
+            # 右端が図からはみ出しそうなら、区間の左側にラベルを置く
+            if x(off + half) + 56 > _W:
+                parts.append(
+                    _text("★ 外れ", x(off - half) - 8, y + 4, size=11.5,
+                          color=color, weight="bold", anchor="end")
+                )
+            else:
+                parts.append(
+                    _text("★ 外れ", x(off + half) + 8, y + 4, size=11.5,
+                          color=color, weight="bold", anchor="start")
+                )
 
     note = spec.get("note", "20回のうち19回（約95%）の区間が母平均μを含む")
     parts.append(_text(note, _W / 2, _H - 8, size=12.5))
@@ -328,7 +341,12 @@ def _interval(spec):
             f'<line x1="{x(v):.1f}" y1="{axis_y}" x2="{x(v):.1f}" '
             f'y2="{axis_y + 5}" stroke="{_AXIS}" stroke-width="1"/>'
         )
-        parts.append(_text(_fmt(v), x(v), axis_y + 22, size=12.5, weight="bold"))
+        # 注目する値（mark）のラベルと近すぎるときは外側へ寄せて重なりを防ぐ
+        anchor, dx = "middle", 0
+        if mark is not None and abs(x(v) - x(mark)) < 30:
+            anchor = "end" if x(v) <= x(mark) else "start"
+            dx = -5 if anchor == "end" else 5
+        parts.append(_text(_fmt(v), x(v) + dx, axis_y + 22, size=12.5, weight="bold", anchor=anchor))
 
     # 信頼区間の帯（両端は縦棒つき）
     parts.append(
@@ -356,7 +374,12 @@ def _interval(spec):
             _text(spec.get("mark_label", _fmt(mark)), x(mark), bar_y - 50,
                   size=12.5, color=red, weight="bold")
         )
-        parts.append(_text(_fmt(mark), x(mark), axis_y + 22, size=12.5, color=red, weight="bold"))
+        anchor, dx = "middle", 0
+        near = [v for v in (lo, hi) if abs(x(v) - x(mark)) < 30]
+        if near:
+            anchor = "start" if x(mark) >= x(near[0]) else "end"
+            dx = 5 if anchor == "start" else -5
+        parts.append(_text(_fmt(mark), x(mark) + dx, axis_y + 22, size=12.5, color=red, weight="bold", anchor=anchor))
 
     if spec.get("note"):
         parts.append(_text(spec["note"], _W / 2, _H - 12, size=12.5))
