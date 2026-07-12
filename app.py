@@ -492,7 +492,7 @@ def show_question(local_storage):
                     start_quiz(next_qs, label=next_label)
                     st.rerun()
 
-    st.markdown(f"### Q{num}. {q['question']}")
+    st.markdown(f"#### Q{num}. {q['question']}")
 
     # 選択肢の表示順は問題ごとにシャッフルする（正解の位置のかたよりを覚えられないように）。
     # 一度決めた順番はセッションに保存し、再描画しても順番が変わらないようにする
