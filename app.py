@@ -35,11 +35,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-SET_SIZE = 5  # 1セットあたりの問題数
-LEVELS = ["易", "標準", "難", "実践"]  # 難易度の表示順
-LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴", "実践": "🟣"}
+SET_SIZE = 5  # 1LVあたりの問題数
+LEVELS = ["易", "標準", "難", "実践", "CBT式実践"]  # 難易度の表示順
+LEVEL_BADGE = {"易": "🟢", "標準": "🟡", "難": "🔴", "実践": "🟣", "CBT式実践": "🟣"}
 # 達成率・しおりを端末（localStorage）に保存するキー。
-# セット構成を変えたときは末尾の版数を上げて、古い記録が別セットの成績として
+# LV構成を変えたときは末尾の版数を上げて、古い記録が別LVの成績として
 # 誤って表示されないようにする（記録はリセットされる）
 STORAGE_KEY = "toukei2kyuu_results_v3"
 RESUME_KEY = "toukei2kyuu_resume_v3"
@@ -150,13 +150,13 @@ def show_explanation(q):
 
 
 def build_sets(level, size=SET_SIZE):
-    """ある難易度の問題を、並び順に size 問ずつのセットに分ける。"""
+    """ある難易度の問題を、並び順に size 問ずつのLVに分ける。"""
     qs = [q for q in QUESTIONS if q["level"] == level]
     return [qs[i : i + size] for i in range(0, len(qs), size)]
 
 
 def all_sets():
-    """全セットを表示順に（ラベル, 問題リスト）のペアで返す。"""
+    """全LVを表示順に（ラベル, 問題リスト）のペアで返す。"""
     sets = []
     for level in LEVELS:
         for i, s in enumerate(build_sets(level)):
@@ -165,12 +165,12 @@ def all_sets():
 
 
 def all_set_labels():
-    """全セットのラベル（例: 易1, 標準3, 難1）を表示順で返す。"""
+    """全LVのラベル（例: 易1, 標準3, 難1）を表示順で返す。"""
     return [label for label, _ in all_sets()]
 
 
 def set_by_label(label):
-    """ラベル（例: 標準3）からそのセットの問題リストを返す。なければ None。"""
+    """ラベル（例: 標準3）からそのLVの問題リストを返す。なければ None。"""
     for lbl, qs in all_sets():
         if lbl == label:
             return qs
@@ -178,8 +178,8 @@ def set_by_label(label):
 
 
 def question_info():
-    """問題id → (通し番号, セット名) の辞書を表示順で返す。
-    通し番号はセットの並び順に全問へ振った連番（例: 易1がQ1〜Q5、易2がQ6〜Q10…）。"""
+    """問題id → (通し番号, LV名) の辞書を表示順で返す。
+    通し番号はLVの並び順に全問へ振った連番（例: 易1がQ1〜Q5、易2がQ6〜Q10…）。"""
     info = {}
     n = 0
     for label, qs in all_sets():
@@ -190,13 +190,13 @@ def question_info():
 
 
 def draw_stats():
-    """全セット制覇のお知らせを表示する。"""
+    """全LV制覇のお知らせを表示する。"""
     results = st.session_state.get("results", {})
     total = len(all_set_labels())
 
-    # 全セット制覇のお知らせ（途中で終了したセット＝しおりが残っている間は出さない）
+    # 全LV制覇のお知らせ（途中で終了したLV＝しおりが残っている間は出さない）
     if results and len(results) == total and not st.session_state.get("resume"):
-        st.success(f"🎉 全{total}セット制覇！コンプリートおめでとうございます！")
+        st.success(f"🎉 全{total}LV制覇！コンプリートおめでとうございます！")
 
 
 # ------------------------------------------------------------------
@@ -214,13 +214,13 @@ def init_state(local_storage):
         except (ValueError, TypeError):
             st.session_state.results = {}
     if "resume" not in st.session_state:
-        # 中断したセットの「しおり」を読み込む（セット名 → しおり の辞書。なければ空）
+        # 中断したLVの「しおり」を読み込む（LV名 → しおり の辞書。なければ空）
         raw = local_storage.getItem(RESUME_KEY)
         try:
             data = json.loads(raw) if raw else {}
         except (ValueError, TypeError):
             data = {}
-        # 旧形式（1セット分だけのしおり）で保存されていたら、新形式の辞書に変換する
+        # 旧形式（1LV分だけのしおり）で保存されていたら、新形式の辞書に変換する
         if isinstance(data, dict) and "label" in data:
             data = {data["label"]: {"index": data["index"], "score": data["score"]}}
         st.session_state.resume = data if isinstance(data, dict) else {}
@@ -232,7 +232,7 @@ def start_quiz(question_pool, label=None, shuffle=False, start_index=0, start_sc
     if shuffle:
         random.shuffle(pool)
     st.session_state.order = pool
-    st.session_state.current_set = label  # いま挑戦中のセット名
+    st.session_state.current_set = label  # いま挑戦中のLV名
     st.session_state.index = start_index  # 今が何問目か（再開時はその位置から）
     st.session_state.score = start_score  # 正解数（再開時はそれまでの分を引き継ぐ）
     st.session_state.answered = False   # 現在の問題に回答済みか
@@ -240,7 +240,7 @@ def start_quiz(question_pool, label=None, shuffle=False, start_index=0, start_sc
     st.session_state.finished = False   # 全問終わったか
     st.session_state.result_saved = False  # 結果を保存済みか
     st.session_state.reviews = {}       # 問題id → 正誤・選んだ答え の記録
-    # 前のセットで開いたヒント・解説と、選択肢のシャッフル順をすべてリセットする
+    # 前のLVで開いたヒント・解説と、選択肢のシャッフル順をすべてリセットする
     # （問題ごとのキーを消す。同じ問題に再挑戦したときは新しい順番で並ぶ）
     for k in [
         k for k in st.session_state if str(k).startswith(("show_expl_", "show_hint_", "perm_"))
@@ -253,7 +253,7 @@ def start_quiz(question_pool, label=None, shuffle=False, start_index=0, start_sc
 # ------------------------------------------------------------------
 def sidebar_controls(local_storage):
     # 一番上に「全体の達成率」をドーナツグラフで表示する
-    # （全セットの達成率の平均。未挑戦のセットは0%として数える）
+    # （全LVの達成率の平均。未挑戦のLVは0%として数える）
     labels = all_set_labels()
     results = st.session_state.get("results", {})
     overall = sum(results.get(lbl, 0) for lbl in labels) / len(labels) if labels else 0
@@ -272,7 +272,7 @@ def sidebar_controls(local_storage):
                   font-size="8" font-weight="700" fill="#1c83e1">{overall:.0f}%</text>
           </svg>
           <div style="font-size:0.8rem;color:#666;">
-            全体の達成率（{attempted}/{len(labels)}セット挑戦済み）
+            全体の達成率（{attempted}/{len(labels)}LV挑戦済み）
           </div>
         </div>
         """,
@@ -286,10 +286,10 @@ def sidebar_controls(local_storage):
     st.sidebar.caption(f"全{len(QUESTIONS)}問　{counts}")
     st.sidebar.markdown("---")
 
-    st.sidebar.header("⚙️ 出題セットを選ぶ")
+    st.sidebar.header("⚙️ 出題LVを選ぶ")
     st.sidebar.caption(f"ボタンを押すとその{SET_SIZE}問が始まります 👇")
 
-    # 難易度ごとに、5問ずつのセットボタンを縦一列に並べる
+    # 難易度ごとに、5問ずつのLVボタンを縦一列に並べる
     for level in LEVELS:
         sets = build_sets(level)
         if not sets:
@@ -298,25 +298,25 @@ def sidebar_controls(local_storage):
         results = st.session_state.get("results", {})
         for i, s in enumerate(sets):
             label = f"{level}{i + 1}"
-            # このセットのしおり（『今日はここまで』で中断した位置）があれば取り出す
+            # このLVのしおり（『今日はここまで』で中断した位置）があれば取り出す
             bookmark = (st.session_state.get("resume") or {}).get(label)
             if not (bookmark and 0 < bookmark.get("index", 0) < len(s)):
                 bookmark = None
-            # ボタンの上にそのセットの達成率バーを表示する（未挑戦でも0%で表示）
+            # ボタンの上にそのLVの達成率バーを表示する（未挑戦でも0%で表示）
             rate = results.get(label, 0)
             suffix = "" if label in results else "（未挑戦）"
             if bookmark:
                 suffix += f"　🌙 {bookmark['index'] + 1}問目から再開"
             st.sidebar.progress(rate / 100, text=f"達成率 {rate:.0f}%{suffix}")
-            # そのセットに含まれる分野を（重複を除き順番どおりに）並べる
+            # そのLVに含まれる分野を（重複を除き順番どおりに）並べる
             # 分野名に「・」が入るものがあるので、区切りは「／」を使う
             cats = "／".join(dict.fromkeys(q["category"] for q in s))
             if st.sidebar.button(
-                f"セット{i + 1}：{cats}（{len(s)}問）",
+                f"LV{i + 1}：{cats}（{len(s)}問）",
                 use_container_width=True,
                 key=f"set_{level}_{i}",
             ):
-                # しおりがあるセットは続きから、なければ1問目から始める
+                # しおりがあるLVは続きから、なければ1問目から始める
                 if bookmark:
                     start_quiz(
                         s,
@@ -341,8 +341,8 @@ def sidebar_controls(local_storage):
 # 結果画面
 # ------------------------------------------------------------------
 def record_result(local_storage):
-    """終了したセットの達成率を記録し、端末（localStorage）にも保存する。
-    サイドバーを描く前に呼ぶことで、各セットの達成率がすぐ反映される。"""
+    """終了したLVの達成率を記録し、端末（localStorage）にも保存する。
+    サイドバーを描く前に呼ぶことで、各LVの達成率がすぐ反映される。"""
     if st.session_state.get("result_saved"):
         return
     label = st.session_state.get("current_set")
@@ -355,13 +355,13 @@ def record_result(local_storage):
             STORAGE_KEY, json.dumps(st.session_state.results), key="set_results_record"
         )
     st.session_state.result_saved = True
-    # このセットを最後まで解いたら、同じセットのしおりは用済みなので消す
+    # このLVを最後まで解いたら、同じLVのしおりは用済みなので消す
     resume = st.session_state.get("resume") or {}
     if label in resume:
         del resume[label]
         st.session_state.resume = resume
         local_storage.setItem(RESUME_KEY, json.dumps(resume), key="set_resume_record")
-    # 全セット制覇した瞬間だけ風船を飛ばす（しおりが残っている間は未制覇扱い）
+    # 全LV制覇した瞬間だけ風船を飛ばす（しおりが残っている間は未制覇扱い）
     if len(st.session_state.results) == len(all_set_labels()) and not st.session_state.get("resume"):
         st.balloons()
 
@@ -390,7 +390,7 @@ def show_result():
     wrong_qs = []  # 間違えた問題（再挑戦用）
     info = question_info()
     for idx, q in enumerate(order, start=1):
-        num = info.get(q["id"], (idx, None))[0]  # 通し番号（見つからなければセット内番号）
+        num = info.get(q["id"], (idx, None))[0]  # 通し番号（見つからなければLV内番号）
         title = q["question"]
         if len(title) > 30:
             title = title[:30] + "…"
@@ -413,31 +413,31 @@ def show_result():
             start_quiz(wrong_qs, label=None)
             st.rerun()
     else:
-        st.success("全問正解！このセットは完璧です 🎉")
+        st.success("全問正解！このLVは完璧です 🎉")
 
     draw_stats()
 
-    st.caption("← サイドバーのセットボタンから次の問題に挑戦できます。")
+    st.caption("← サイドバーのLVボタンから次の問題に挑戦できます。")
 
 
 # ------------------------------------------------------------------
 # 問題画面
 # ------------------------------------------------------------------
 def stop_for_today(local_storage, next_index):
-    """『今日はここまで』：次回このセットの続き（next_index 番目）から始められるよう
-    しおりを保存してホームに戻る。しおりはセットごとに別々に記憶されるので、
-    ほかのセットを解いても消えない。練習モード（ラベルなし）では何もしない。"""
+    """『今日はここまで』：次回このLVの続き（next_index 番目）から始められるよう
+    しおりを保存してホームに戻る。しおりはLVごとに別々に記憶されるので、
+    ほかのLVを解いても消えない。練習モード（ラベルなし）では何もしない。"""
     label = st.session_state.get("current_set")
     if not label:
         return
     resume = st.session_state.get("resume") or {}
     resume[label] = {
-        "index": next_index,          # 次回このセットで最初に解く問題の位置
+        "index": next_index,          # 次回このLVで最初に解く問題の位置
         "score": st.session_state.score,  # ここまでの正解数を引き継ぐ
     }
     st.session_state.resume = resume
     local_storage.setItem(RESUME_KEY, json.dumps(resume), key="set_resume_stop")
-    # ここまでの達成率（正解数 ÷ セット全問数）も保存して、サイドバーのバーに反映する
+    # ここまでの達成率（正解数 ÷ LV全問数）も保存して、サイドバーのバーに反映する
     total = len(st.session_state.order)
     if total:
         st.session_state.results[label] = st.session_state.score / total * 100
@@ -456,10 +456,10 @@ def show_question(local_storage):
 
     badge = LEVEL_BADGE.get(q["level"], "")
     num, set_label = question_info().get(q["id"], (i + 1, None))
-    # セット名の難易度部分は「難易度:」欄と重複するので、番号だけを表示する（標準3 → 3）
+    # LV名の難易度部分は「難易度:」欄と重複するので、番号だけを表示する（標準3 → 3）
     if set_label and set_label.startswith(q["level"]):
         set_label = set_label[len(q["level"]):]
-    set_part = f" ｜ セット: {set_label}" if set_label else ""
+    set_part = f" ｜ LV: {set_label}" if set_label else ""
     st.caption(
         f"分野: {q['category']} ｜ 難易度: {badge} {q['level']}{set_part}"
         f"（{i + 1}/{total}問目）"
@@ -472,14 +472,14 @@ def show_question(local_storage):
                 st.session_state.index += 1
                 st.rerun()
         else:
-            # セット最後の問題では、次のセットの先頭へ移動できる
-            # （途中で移動してもセットは終了扱いにならず、達成率は保存されない）
+            # LV最後の問題では、次のLVの先頭へ移動できる
+            # （途中で移動してもLVは終了扱いにならず、達成率は保存されない）
             sets = all_sets()
             labels = [label for label, _ in sets]
             current = st.session_state.get("current_set")
             if current in labels and current != labels[-1]:
                 next_label, next_qs = sets[labels.index(current) + 1]
-                if st.button("次のセットの問題を見る"):
+                if st.button("次のLVの問題を見る"):
                     start_quiz(next_qs, label=next_label)
                     st.rerun()
 
@@ -618,14 +618,14 @@ def main():
     local_storage = LocalStorage()
     init_state(local_storage)
 
-    # サイドバーを描く前に、終了したセットの達成率を記録しておく
+    # サイドバーを描く前に、終了したLVの達成率を記録しておく
     if st.session_state.get("finished"):
         record_result(local_storage)
 
     sidebar_controls(local_storage)
 
     if st.session_state.order is None:
-        # 中断したセットがあれば、セットごとに続きから再開できるボタンを出す
+        # 中断したLVがあれば、LVごとに続きから再開できるボタンを出す
         resume = st.session_state.get("resume") or {}
         bookmarks = []
         for lbl, bm in resume.items():
@@ -652,9 +652,9 @@ def main():
                     )
                     st.rerun()
 
-        st.info("👈 左のサイドバーから出題セット（易・標準・難・実践）を選ぶと、問題集が始まります。")
+        st.info("👈 左のサイドバーから出題LV（易・標準・難・実践・CBT式実践）を選ぶと、問題集が始まります。")
         st.markdown(
-            f"- 各セットは**{SET_SIZE}問**ずつに分かれています\n"
+            f"- 各LVは**{SET_SIZE}問**ずつに分かれています\n"
             "- 答えを選ぶと、その場で正誤と解説が表示されます\n"
             "- 達成率は端末に保存され、次に開いたときも残ります"
         )
