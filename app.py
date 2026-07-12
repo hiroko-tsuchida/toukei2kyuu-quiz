@@ -400,7 +400,7 @@ def show_result():
     info = question_info()
     for idx, q in enumerate(order, start=1):
         num = info.get(q["id"], (idx, None))[0]  # 通し番号（見つからなければLV内番号）
-        title = q["question"]
+        title = q["question"].split("\n")[0]  # 穴埋め問題の表などは一覧に出さない
         if len(title) > 30:
             title = title[:30] + "…"
         r = reviews.get(q["id"])
