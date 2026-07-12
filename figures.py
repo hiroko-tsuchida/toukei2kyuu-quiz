@@ -844,9 +844,102 @@ def _dist_shape(spec):
     return _wrap("".join(parts))
 
 
+def _expon_area(spec):
+    """指数分布（平均 mean）の曲線と、from から右側の塗り分けを描く。
+
+    spec の例:
+        {"type": "expon_area", "mean": 500, "from": 500, "label": "約37%",
+         "xlabel": "寿命（時間）",   # 省略時は "x"
+         "median": True,            # 中央値の破線も描く（省略可）
+         "note": "..."}             # 図の上の一言（省略可）
+    """
+    mean = spec["mean"]
+    u0 = spec["from"] / mean  # 平均を1とした横軸の位置
+    umax = 4.0  # 横軸は平均の4倍まで描く
+    dmax = 1.08  # 縦軸の上限（x=0 で密度1）
+
+    def xu(u):
+        return _ML + u / umax * (_W - _ML - _MR)
+
+    def yd(d):
+        return _MT + (_H - _MT - _MB) * (1 - d / dmax)
+
+    def pdf(u):
+        return math.exp(-u)
+
+    def curve(a, b, n=120):
+        return [
+            f"{xu(u):.1f},{yd(pdf(u)):.1f}"
+            for u in (a + (b - a) * i / n for i in range(n + 1))
+        ]
+
+    parts = []
+    line, fill = _COLORS["red"]
+
+    # from から右側の塗り分けと面積ラベル（裾なので曲線の上に置く）
+    parts.append(
+        f'<path d="M{xu(u0):.1f},{yd(0):.1f} L'
+        + " L".join(curve(u0, umax))
+        + f' L{xu(umax):.1f},{yd(0):.1f} Z" fill="{fill}"/>'
+    )
+    if spec.get("label"):
+        um = min(u0 + 0.75, umax - 0.6)
+        parts.append(
+            _text(spec["label"], xu(um), yd(pdf(um)) - 12, size=15, color=line, weight="bold")
+        )
+
+    # 中央値の破線（平均×ln2。平均より左に来ることを見せる）
+    if spec.get("median"):
+        umed = math.log(2)
+        parts.append(
+            f'<line x1="{xu(umed):.1f}" y1="{yd(pdf(umed)):.1f}" '
+            f'x2="{xu(umed):.1f}" y2="{yd(0):.1f}" stroke="{_COLORS["gray"][0]}" '
+            f'stroke-width="1.5" stroke-dasharray="5 4"/>'
+        )
+        parts.append(_text(f"中央値≒{round(mean * umed)}", xu(umed), yd(0) + 36, size=11))
+
+    # 境界の破線（赤で強調）
+    parts.append(
+        f'<line x1="{xu(u0):.1f}" y1="{yd(pdf(u0)) - 20:.1f}" '
+        f'x2="{xu(u0):.1f}" y2="{yd(0):.1f}" stroke="{line}" '
+        f'stroke-width="1.5" stroke-dasharray="5 4"/>'
+    )
+
+    # 曲線本体とベースライン（横軸）
+    parts.append(
+        f'<polyline points="{" ".join(curve(0, umax))}" fill="none" '
+        f'stroke="{_COLORS["blue"][0]}" stroke-width="2" stroke-linejoin="round"/>'
+    )
+    parts.append(
+        f'<line x1="{_ML}" y1="{yd(0):.1f}" x2="{_W - _MR}" y2="{yd(0):.1f}" '
+        f'stroke="{_AXIS}" stroke-width="1.5"/>'
+    )
+
+    # 目盛り：平均の倍数（境界と重なるところは省く）＋ 境界の値（赤太字）
+    for t in range(0, int(umax) + 1):
+        if abs(t - u0) < 0.4:
+            continue
+        parts.append(
+            f'<line x1="{xu(t):.1f}" y1="{yd(0):.1f}" x2="{xu(t):.1f}" '
+            f'y2="{yd(0) + 5:.1f}" stroke="{_AXIS}" stroke-width="1"/>'
+        )
+        parts.append(_text(_fmt(round(mean * t)), xu(t), yd(0) + 20, size=12))
+    parts.append(
+        _text(_fmt(spec["from"]), xu(u0), yd(0) + 20, size=12.5, color=line, weight="bold")
+    )
+
+    # 横軸の名前と図の上の一言（省略可）
+    parts.append(_text(spec.get("xlabel", "x"), _W - _MR, yd(0) + 36, size=12, anchor="end"))
+    if spec.get("note"):
+        parts.append(_text(spec["note"], _W / 2, 18, size=12.5))
+
+    return _wrap("".join(parts))
+
+
 # 図タイプ名 → 描画関数 の対応表
 _BUILDERS = {
     "normal_area": _normal_area,
+    "expon_area": _expon_area,
     "ci": _ci,
     "rejection": _rejection,
     "ci_repeat": _ci_repeat,
