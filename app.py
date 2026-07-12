@@ -30,6 +30,15 @@ st.markdown(
     [data-testid="stIconMaterial"] {
         font-family: "Material Symbols Rounded" !important;
     }
+    /* サイドバーのLVボタンの文字は左寄せにする（既定は中央寄せ）。
+       ボタン本体は flex 配置、折り返した行は内側の p 要素の text-align で揃える */
+    [data-testid="stSidebar"] .stButton button {
+        justify-content: flex-start !important;
+    }
+    [data-testid="stSidebar"] .stButton button [data-testid="stMarkdownContainer"],
+    [data-testid="stSidebar"] .stButton button p {
+        text-align: left !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -312,7 +321,7 @@ def sidebar_controls(local_storage):
             # 分野名に「・」が入るものがあるので、区切りは「／」を使う
             cats = "／".join(dict.fromkeys(q["category"] for q in s))
             if st.sidebar.button(
-                f"LV{i + 1}：{cats}（{len(s)}問）",
+                f"**LV{i + 1}**：{cats}（{len(s)}問）",
                 use_container_width=True,
                 key=f"set_{level}_{i}",
             ):
@@ -459,7 +468,7 @@ def show_question(local_storage):
     # LV名の難易度部分は「難易度:」欄と重複するので、番号だけを表示する（標準3 → 3）
     if set_label and set_label.startswith(q["level"]):
         set_label = set_label[len(q["level"]):]
-    set_part = f" ｜ LV: {set_label}" if set_label else ""
+    set_part = f" ｜ **LV{set_label}**" if set_label else ""
     st.caption(
         f"分野: {q['category']} ｜ 難易度: {badge} {q['level']}{set_part}"
         f"（{i + 1}/{total}問目）"
