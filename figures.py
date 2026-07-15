@@ -586,7 +586,8 @@ def _scatter(spec):
     if spec.get("mode") == "regression":
         a, b = spec["slope"], spec["intercept"]
         px = spec.get("predict_x")
-        xmax, ymax = 14.0, 100.0
+        # 軸の範囲は省略時 14×100。直線が図に収まるよう ymax などで調整できる
+        xmax, ymax = spec.get("xmax", 14.0), spec.get("ymax", 100.0)
         ml = 44  # 縦軸ラベルのぶん左の余白を広くとる
 
         def x(v):
@@ -601,15 +602,16 @@ def _scatter(spec):
         parts.append(_text(spec.get("xlabel", "x"), _W - _MR, 232, size=12, anchor="end"))
         parts.append(_text(spec.get("ylabel", "y"), ml, 24, size=12, anchor="start"))
 
-        # データ点（直線のまわりに固定のずれで散らす）
+        # データ点（直線のまわりに固定のずれで散らす。ずれ幅は縦軸の範囲に比例）
         for t, nz in zip(_SC_T, _SC_NOISE):
-            vx = t * 13
-            vy = a * vx + b + nz * 55
+            vx = t * (xmax - 1)
+            vy = a * vx + b + nz * ymax * 0.55
             parts.append(f'<circle cx="{x(vx):.1f}" cy="{y(vy):.1f}" r="3" fill="{blue}" opacity="0.75"/>')
 
         # 回帰直線と切片
+        xe = xmax * 0.96  # 直線の右端（枠の少し内側まで）
         parts.append(
-            f'<line x1="{x(0):.1f}" y1="{y(b):.1f}" x2="{x(13.5):.1f}" y2="{y(a * 13.5 + b):.1f}" '
+            f'<line x1="{x(0):.1f}" y1="{y(b):.1f}" x2="{x(xe):.1f}" y2="{y(a * xe + b):.1f}" '
             f'stroke="{blue}" stroke-width="2.5"/>'
         )
         parts.append(_text(f"切片{_fmt(b)}", ml + 6, y(b) + 4, size=11.5, anchor="start"))
@@ -936,6 +938,234 @@ def _expon_area(spec):
     return _wrap("".join(parts))
 
 
+def _uniform_area(spec):
+    """一様分布（区間 0〜a）の長方形と、from〜to の塗り分けを描く。
+
+    spec の例:
+        {"type": "uniform_area", "a": 10, "from": 3, "to": 5, "label": "0.2",
+         "xlabel": "待ち時間（分）",  # 省略可
+         "mean_note": "期待値5",      # まん中（a/2）の下に出す補足（省略可）
+         "note": "..."}              # 図の上の一言（省略可）
+    """
+    a = spec["a"]
+    v0, v1 = spec["from"], spec["to"]
+    y0, top = 200, 96  # ベースラインと長方形の上辺
+
+    def xu(v):
+        return _ML + v / a * (_W - _ML - _MR)
+
+    parts = []
+    red_line, red_fill = _COLORS["red"]
+    blue = _COLORS["blue"][0]
+
+    # 塗り分け（from〜to）と面積ラベル
+    parts.append(
+        f'<rect x="{xu(v0):.1f}" y="{top}" width="{xu(v1) - xu(v0):.1f}" '
+        f'height="{y0 - top}" fill="{red_fill}"/>'
+    )
+    if spec.get("label"):
+        parts.append(
+            _text(spec["label"], (xu(v0) + xu(v1)) / 2, (top + y0) / 2 + 5,
+                  size=15, color=red_line, weight="bold")
+        )
+    # 境界の破線（赤で強調）
+    for v in (v0, v1):
+        parts.append(
+            f'<line x1="{xu(v):.1f}" y1="{top - 14:.1f}" x2="{xu(v):.1f}" '
+            f'y2="{y0}" stroke="{red_line}" stroke-width="1.5" stroke-dasharray="5 4"/>'
+        )
+
+    # 密度の長方形（高さ 1/a で一定＝どこも同じ確からしさ）
+    parts.append(
+        f'<path d="M{xu(0):.1f},{y0} L{xu(0):.1f},{top} L{xu(a):.1f},{top} '
+        f'L{xu(a):.1f},{y0}" fill="none" stroke="{blue}" stroke-width="2" '
+        f'stroke-linejoin="round"/>'
+    )
+    parts.append(_text(f"高さ 1/{_fmt(a)}（一定）", xu(0) + 8, top - 8, size=12,
+                       color=blue, weight="bold", anchor="start"))
+
+    # ベースライン（横軸）
+    parts.append(
+        f'<line x1="{_ML}" y1="{y0}" x2="{_W - _MR}" y2="{y0}" '
+        f'stroke="{_AXIS}" stroke-width="1.5"/>'
+    )
+
+    # 目盛り：0とa（境界と重なるところは省く）＋ 境界の値（赤太字）
+    for t in (0, a):
+        if abs(t - v0) < a * 0.05 or abs(t - v1) < a * 0.05:
+            continue
+        parts.append(
+            f'<line x1="{xu(t):.1f}" y1="{y0}" x2="{xu(t):.1f}" y2="{y0 + 5}" '
+            f'stroke="{_AXIS}" stroke-width="1"/>'
+        )
+        parts.append(_text(_fmt(t), xu(t), y0 + 20, size=12))
+    for v in (v0, v1):
+        parts.append(_text(_fmt(v), xu(v), y0 + 20, size=12.5, color=red_line, weight="bold"))
+
+    # まん中（期待値）の下の補足と横軸の名前
+    if spec.get("mean_note"):
+        parts.append(_text(spec["mean_note"], xu(a / 2), y0 + 38, size=11.5))
+    parts.append(_text(spec.get("xlabel", "x"), _W - _MR, y0 + 38, size=12, anchor="end"))
+    if spec.get("note"):
+        parts.append(_text(spec["note"], _W / 2, 18, size=12.5))
+    return _wrap("".join(parts))
+
+
+def _power(spec):
+    """検出力の図：帰無仮説の分布（グレー破線）と真の分布（青）を重ね、
+    棄却の境目 crit より右の真の分布の面積（＝検出力）を赤く塗る。
+    横軸は標準誤差単位（帰無仮説の平均＝0）で指定する。
+
+    spec の例:
+        {"type": "power", "shift": 1.5, "crit": 1.645, "crit_label": "53.29",
+         "h0_label": "帰無仮説の分布", "h1_label": "真の分布",
+         "beta_label": "β≒0.56", "power_label": "検出力≒0.44",
+         "xnotes": {0: "μ=50", 1.5: "μ=53"}, "note": "..."}
+    """
+    shift = spec["shift"]
+    crit = spec["crit"]
+    zmin, zmax = -3.2, shift + 3.2
+
+    def xof(v):
+        return _ML + (v - zmin) / (zmax - zmin) * (_W - _ML - _MR)
+
+    def pts(f, va, vb, n=120):
+        return [
+            f"{xof(v):.1f},{_y(f(v)):.1f}"
+            for v in (va + (vb - va) * i / n for i in range(n + 1))
+        ]
+
+    def area(f, va, vb):
+        p = pts(f, va, vb)
+        return f"M{xof(va):.1f},{_y(0):.1f} L" + " L".join(p) + f" L{xof(vb):.1f},{_y(0):.1f} Z"
+
+    h1 = lambda v: _pdf(v - shift)
+    parts = []
+    red_line, red_fill = _COLORS["red"]
+    gray_line, gray_fill = _COLORS["gray"]
+    blue = _COLORS["blue"][0]
+
+    # 真の分布の下の塗り分け：境目より左＝β（グレー）、右＝検出力（赤）
+    parts.append(f'<path d="{area(h1, zmin, crit)}" fill="{gray_fill}"/>')
+    parts.append(f'<path d="{area(h1, crit, zmax)}" fill="{red_fill}"/>')
+    if spec.get("beta_label"):
+        parts.append(_text(spec["beta_label"], xof(crit - 0.85), _y(h1(crit - 0.85) * 0.4),
+                           size=13.5, color="#666666", weight="bold"))
+    if spec.get("power_label"):
+        parts.append(_text(spec["power_label"], xof(crit + 1.0), _y(h1(crit + 1.0) * 0.4),
+                           size=13.5, color=red_line, weight="bold"))
+
+    # 帰無仮説の分布（グレー破線）と真の分布（青実線）
+    parts.append(
+        f'<polyline points="{" ".join(pts(_pdf, zmin, zmax))}" fill="none" '
+        f'stroke="{gray_line}" stroke-width="2" stroke-dasharray="6 4" stroke-linejoin="round"/>'
+    )
+    parts.append(
+        f'<polyline points="{" ".join(pts(h1, zmin, zmax))}" fill="none" '
+        f'stroke="{blue}" stroke-width="2" stroke-linejoin="round"/>'
+    )
+    # 分布の名前は、それぞれの山のてっぺんの真上に置く（曲線との重なりを避ける）
+    if spec.get("h0_label"):
+        parts.append(_text(spec["h0_label"], xof(0), 44,
+                           size=12, color=gray_line, weight="bold"))
+    if spec.get("h1_label"):
+        parts.append(_text(spec["h1_label"], xof(shift), 44,
+                           size=12, color=blue, weight="bold"))
+
+    # 棄却の境目（赤破線）とベースライン（横軸）
+    parts.append(
+        f'<line x1="{xof(crit):.1f}" y1="52" x2="{xof(crit):.1f}" y2="{_y(0):.1f}" '
+        f'stroke="{red_line}" stroke-width="1.5" stroke-dasharray="5 4"/>'
+    )
+    parts.append(
+        f'<line x1="{_ML}" y1="{_y(0):.1f}" x2="{_W - _MR}" y2="{_y(0):.1f}" '
+        f'stroke="{_AXIS}" stroke-width="1.5"/>'
+    )
+    parts.append(_text(spec.get("crit_label", _fmt(crit)), xof(crit), _y(0) + 20,
+                       size=12.5, color=red_line, weight="bold"))
+
+    # 平均などの目盛り（破線＋下の補足）
+    for v, note in (spec.get("xnotes") or {}).items():
+        v = float(v)
+        parts.append(
+            f'<line x1="{xof(v):.1f}" y1="{_y(0):.1f}" x2="{xof(v):.1f}" '
+            f'y2="{_y(0) + 5:.1f}" stroke="{_AXIS}" stroke-width="1"/>'
+        )
+        parts.append(_text(note, xof(v), _y(0) + 36, size=11.5))
+    if spec.get("note"):
+        parts.append(_text(spec["note"], _W / 2, 18, size=12.5))
+    return _wrap("".join(parts))
+
+
+def _bayes_tree(spec):
+    """ベイズの定理の人数分解の図（木の形）。
+    全体 → グループ（枝）→ 陽性・陰性（葉）と人数で分解し、陽性の葉を赤で強調する。
+
+    spec の例:
+        {"type": "bayes_tree", "root": "1万人",
+         "branches": [
+             {"label": "病気 100人", "pos": "陽性 90人", "neg": "陰性 10人"},
+             {"label": "病気でない 9,900人", "pos": "陽性 990人", "neg": "陰性 8,910人"},
+         ],
+         "result": "陽性1,080人中、病気は90人 → 90÷1080≒8.3%",  # 下の結論（省略可）
+         "note": "..."}  # 図の上の一言（省略可）
+    neg は省略できる（省略すると pos の葉だけを描く）。
+    """
+    branches = spec["branches"]
+    n = len(branches)
+    parts = []
+    red_line, red_fill = _COLORS["red"]
+    gray_line = _COLORS["gray"][0]
+    blue = _COLORS["blue"][0]
+
+    top, bottom = 40, 226  # 木を描く範囲
+    centers = [top + (bottom - top) * (i + 0.5) / n for i in range(n)]
+
+    def box(x, yc, w, h, label, stroke, fill="none", color=_INK, weight="normal", size=12):
+        parts.append(
+            f'<rect x="{x:.1f}" y="{yc - h / 2:.1f}" width="{w}" height="{h}" rx="6" '
+            f'fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>'
+        )
+        parts.append(_text(label, x + w / 2, yc + 4.5, size=size, color=color, weight=weight))
+
+    def link(x1, y1, x2, y2):
+        parts.append(
+            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+            f'stroke="{_AXIS}" stroke-width="1.5"/>'
+        )
+
+    # 根（全体）
+    rx, rw, rh = 16, 92, 30
+    ry = (top + bottom) / 2
+    box(rx, ry, rw, rh, spec["root"], blue, weight="bold", size=12.5)
+
+    # 枝（グループ）と葉（陽性・陰性）
+    bx, bw, bh = 146, 158, 28
+    lx, lw, lh = 340, 106, 25
+    for bc, br in zip(centers, branches):
+        link(rx + rw, ry, bx, bc)
+        box(bx, bc, bw, bh, br["label"], gray_line, size=11.5)
+        if br.get("neg"):
+            for dy, key, is_pos in ((-19, "pos", True), (19, "neg", False)):
+                link(bx + bw, bc, lx, bc + dy)
+                if is_pos:
+                    box(lx, bc + dy, lw, lh, br[key], red_line, fill=red_fill,
+                        color=red_line, weight="bold", size=11.5)
+                else:
+                    box(lx, bc + dy, lw, lh, br[key], gray_line, size=11.5)
+        else:
+            link(bx + bw, bc, lx, bc)
+            box(lx, bc, lw, lh, br["pos"], red_line, fill=red_fill,
+                color=red_line, weight="bold", size=11.5)
+
+    # 下の結論と上の一言（どちらも省略可）
+    if spec.get("result"):
+        parts.append(_text(spec["result"], _W / 2, 252, size=12.5, color=red_line, weight="bold"))
+    if spec.get("note"):
+        parts.append(_text(spec["note"], _W / 2, 18, size=12.5))
+    return _wrap("".join(parts))
+
+
 # 図タイプ名 → 描画関数 の対応表
 _BUILDERS = {
     "normal_area": _normal_area,
@@ -948,6 +1178,9 @@ _BUILDERS = {
     "skew": _skew,
     "scatter": _scatter,
     "dist_shape": _dist_shape,
+    "uniform_area": _uniform_area,
+    "power": _power,
+    "bayes_tree": _bayes_tree,
 }
 
 
