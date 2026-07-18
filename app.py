@@ -55,6 +55,40 @@ RESUME_KEY = "toukei2kyuu_resume_v3"
 
 
 # ------------------------------------------------------------------
+# ログイン（メールアドレス入力のみ・パスワードなし）
+# ------------------------------------------------------------------
+# 「文字@文字.文字」の形になっているかだけを確認するゆるいチェック
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def check_email():
+    """メールアドレスを入力してもらってから利用開始する。
+
+    パスワードは不要。形式が正しければどのアドレスでも入れる。
+    入力されたアドレスは session_state["user_email"] に保持するだけで、
+    どこにも保存・送信しない。
+    """
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.title("📊 統計検定2級問題集")
+    with st.form("login_form"):
+        email = st.text_input("📧 メールアドレス", placeholder="example@example.com")
+        submitted = st.form_submit_button("はじめる")
+    if submitted:
+        if EMAIL_RE.match(email.strip()):
+            st.session_state["authenticated"] = True
+            st.session_state["user_email"] = email.strip()
+            st.rerun()
+        st.error("メールアドレスの形式で入力してください")
+    return False
+
+
+if not check_email():
+    st.stop()
+
+
+# ------------------------------------------------------------------
 # 解説の中の計算式を、大きな数式（LaTeX）に変換して表示する仕組み
 # ------------------------------------------------------------------
 # 解説文の中の「計算式らしき部分」（数字と演算記号の並び）を見つける正規表現
