@@ -740,24 +740,83 @@ def _dist_shape(spec):
 
     elif dist == "chi2":
         k = spec.get("df", 9)
-        xmax = k * 2.7
+        xmax = spec.get("xmax", k * 2.7)
+        crit, stat = spec.get("crit"), spec.get("stat")
+        band = spec.get("band")  # [下側の点, 上側の点]（信頼区間の範囲を示す）
+        marks = spec.get("marks") or []  # [{"x": 2.70, "label": "2.70"}, ...]
 
         def xof(v):
             return _ML + v / xmax * (_W - _ML - _MR)
 
-        fmax = max(_chi2_pdf(0.05 + xmax * i / 200, k) for i in range(200))
+        f = lambda v: _chi2_pdf(v, k)
+        fmax = max(f(0.05 + xmax * i / 200) for i in range(200))
+
+        # 2点の間の塗り分け（信頼区間などに使う）
+        if band is not None:
+            pts = [f"{xof(band[0]):.1f},{y0}"]
+            for i in range(101):
+                v = band[0] + (band[1] - band[0]) * i / 100
+                pts.append(f"{xof(v):.1f},{y0 - f(v) / fmax * (y0 - top):.1f}")
+            pts.append(f"{xof(band[1]):.1f},{y0}")
+            parts.append(f'<path d="M{" L".join(pts)} Z" fill="{_COLORS["blue"][1]}"/>')
+
+        # 棄却域（基準値より右）を赤く塗る
+        if crit is not None:
+            pts = [f"{xof(crit):.1f},{y0}"]
+            for i in range(81):
+                v = crit + (xmax - crit) * i / 80
+                pts.append(f"{xof(v):.1f},{y0 - f(v) / fmax * (y0 - top):.1f}")
+            pts.append(f"{xof(xmax):.1f},{y0}")
+            parts.append(f'<path d="M{" L".join(pts)} Z" fill="{_COLORS["red"][1]}"/>')
+            parts.append(
+                f'<line x1="{xof(crit):.1f}" y1="{y0 - f(crit) / fmax * (y0 - top) - 14:.1f}" '
+                f'x2="{xof(crit):.1f}" y2="{y0}" stroke="{red}" stroke-width="1.5" '
+                f'stroke-dasharray="5 4"/>'
+            )
+            parts.append(_text(spec.get("crit_label", _fmt(crit)), xof(crit), y0 + 18,
+                               size=12.5, color=red, weight="bold"))
+
         parts.append(baseline())
-        parts.append(curve(lambda v: _chi2_pdf(v, k), 0.01, xmax, xof, fmax, blue))
-        # 平均（＝自由度）の位置に破線
-        h = y0 - _chi2_pdf(k, k) / fmax * (y0 - top)
-        parts.append(
-            f'<line x1="{xof(k):.1f}" y1="{h - 16:.1f}" x2="{xof(k):.1f}" y2="{y0}" '
-            f'stroke="{_COLORS["gray"][0]}" stroke-width="1.5" stroke-dasharray="5 4"/>'
-        )
-        parts.append(_text(f"平均＝自由度＝{k}", xof(k), h - 24, size=12.5, weight="bold"))
+        parts.append(curve(f, 0.01, xmax, xof, fmax, blue))
+
+        # 平均（＝自由度）の位置に破線（検定の図では省略できる）
+        if spec.get("show_mean", True):
+            h = y0 - f(k) / fmax * (y0 - top)
+            parts.append(
+                f'<line x1="{xof(k):.1f}" y1="{h - 16:.1f}" x2="{xof(k):.1f}" y2="{y0}" '
+                f'stroke="{_COLORS["gray"][0]}" stroke-width="1.5" stroke-dasharray="5 4"/>'
+            )
+            parts.append(_text(f"平均＝自由度＝{k}", xof(k), h - 24, size=12.5, weight="bold"))
+            parts.append(_text(_fmt(k), xof(k), y0 + 18, size=12.5, weight="bold"))
+
+        # 境目の点の破線（信頼区間の下側・上側の点など）
+        for m in marks:
+            parts.append(
+                f'<line x1="{xof(m["x"]):.1f}" y1="{y0 - f(m["x"]) / fmax * (y0 - top) - 14:.1f}" '
+                f'x2="{xof(m["x"]):.1f}" y2="{y0}" stroke="{red}" stroke-width="1.5" '
+                f'stroke-dasharray="5 4"/>'
+            )
+            parts.append(_text(m["label"], xof(m["x"]), y0 + 18,
+                               size=12.5, color=red, weight="bold"))
+        if band is not None and spec.get("band_label"):
+            vm = (band[0] + band[1]) / 2
+            parts.append(_text(spec["band_label"], xof(vm),
+                               y0 - f(vm) / fmax * (y0 - top) * 0.45,
+                               size=14, color=blue, weight="bold"))
+
+        # 検定統計量のマーカー
+        if stat is not None:
+            h = y0 - f(stat) / fmax * (y0 - top)
+            parts.append(
+                f'<line x1="{xof(stat):.1f}" y1="{h - 14:.1f}" x2="{xof(stat):.1f}" '
+                f'y2="{y0}" stroke="#444444" stroke-width="2"/>'
+            )
+            parts.append(_text(spec.get("stat_label", f"χ²={_fmt(stat)}"), xof(stat),
+                               h - 22, size=12.5, color="#444444", weight="bold"))
+
         parts.append(_text("0", xof(0), y0 + 18, size=12))
-        parts.append(_text(_fmt(k), xof(k), y0 + 18, size=12.5, weight="bold"))
-        parts.append(_text("0以上の値だけをとり、右に裾を引く", _W / 2, y0 + 38, size=12))
+        if crit is None and not marks:
+            parts.append(_text("0以上の値だけをとり、右に裾を引く", _W / 2, y0 + 38, size=12))
 
     elif dist == "f":
         d1, d2 = spec.get("d1", 7), spec.get("d2", 7)
@@ -1166,6 +1225,256 @@ def _bayes_tree(spec):
     return _wrap("".join(parts))
 
 
+def _prob_bar(spec):
+    """離散型の確率分布の棒グラフ（二項分布・ポアソン分布・期待値など）。
+
+    spec の例:
+        {"type": "prob_bar", "labels": ["0", "1", "2"], "probs": [0.5, 0.3, 0.2],
+         "highlight": [0],               # 赤く強調する棒の番号（0始まり・省略可）
+         "bar_labels": ["1/32", ...],    # 棒の上の表示（省略時は確率の値）
+         "mean_at": 0.7, "mean_label": "期待値70円",  # 破線の位置（棒の番号座標）と名前
+         "xlabel": "賞金", "note": "..."}
+    """
+    labels = spec["labels"]
+    probs = spec["probs"]
+    highlight = set(spec.get("highlight") or [])
+    y0, top = 200, 56
+    pmax = max(probs)
+    slot = (_W - _ML - _MR) / len(probs)
+    bw = slot * 0.62
+
+    def xc(i):  # 棒 i の中心（i は小数でもよい）
+        return _ML + slot * (i + 0.5)
+
+    parts = []
+    for i, (lab, p) in enumerate(zip(labels, probs)):
+        line, fill = _COLORS["red" if i in highlight else "blue"]
+        h = p / pmax * (y0 - top)
+        parts.append(
+            f'<rect x="{xc(i) - bw / 2:.1f}" y="{y0 - h:.1f}" width="{bw:.1f}" '
+            f'height="{h:.1f}" fill="{fill}" stroke="{line}" stroke-width="1.5"/>'
+        )
+        # 棒の上の値（省略時は確率を小数3桁まで）
+        if spec.get("bar_labels"):
+            val = spec["bar_labels"][i]
+        else:
+            val = f"{p:.3f}".rstrip("0").rstrip(".")
+        parts.append(
+            _text(val, xc(i), y0 - h - 6, size=11, color=line,
+                  weight="bold" if i in highlight else "normal")
+        )
+        parts.append(_text(lab, xc(i), y0 + 18, size=12))
+
+    # 期待値（平均）の破線
+    if spec.get("mean_at") is not None:
+        mx = xc(spec["mean_at"])
+        parts.append(
+            f'<line x1="{mx:.1f}" y1="44" x2="{mx:.1f}" y2="{y0}" '
+            f'stroke="{_INK}" stroke-width="1.5" stroke-dasharray="5 4"/>'
+        )
+        parts.append(_text(spec.get("mean_label", "期待値"), mx, 38,
+                           size=12.5, weight="bold"))
+
+    # 横軸・横軸の名前・図の上の一言
+    parts.append(
+        f'<line x1="{_ML}" y1="{y0}" x2="{_W - _MR}" y2="{y0}" '
+        f'stroke="{_AXIS}" stroke-width="1.5"/>'
+    )
+    if spec.get("xlabel"):
+        parts.append(_text(spec["xlabel"], _W - _MR, y0 + 38, size=12, anchor="end"))
+    if spec.get("note"):
+        parts.append(_text(spec["note"], _W / 2, 18, size=12.5))
+    return _wrap("".join(parts))
+
+
+def _venn(spec):
+    """2つの事象のベン図（独立・排反・加法定理・条件付き確率など）。
+
+    spec の例:
+        {"type": "venn", "a_label": "P(A)=0.4", "b_label": "P(B)=0.5",
+         "inter_label": "0.2",     # 重なり部分の値（省略可）
+         "disjoint": True,         # 排反（円を離して描く）のとき True
+         "formula": "P(A∪B)=0.4+0.5−0.2=0.7",  # 下の式（省略可）
+         "note": "..."}
+    """
+    parts = []
+    blue, blue_fill = _COLORS["blue"]
+    red_line, red_fill = _COLORS["red"]
+    cy, r = 136, 62
+    if spec.get("disjoint"):
+        c1, c2 = _W / 2 - r - 14, _W / 2 + r + 14
+    else:
+        c1, c2 = _W / 2 - 42, _W / 2 + 42
+
+    parts.append(f'<circle cx="{c1:.1f}" cy="{cy}" r="{r}" fill="{blue_fill}" '
+                 f'stroke="{blue}" stroke-width="2"/>')
+    parts.append(f'<circle cx="{c2:.1f}" cy="{cy}" r="{r}" fill="{red_fill}" '
+                 f'stroke="{red_line}" stroke-width="2"/>')
+    parts.append(_text(spec.get("a_label", "A"), c1 - 14, cy - r - 12,
+                       size=13, color=blue, weight="bold"))
+    parts.append(_text(spec.get("b_label", "B"), c2 + 14, cy - r - 12,
+                       size=13, color=red_line, weight="bold"))
+
+    # 重なり部分の値（排反のときは「重なりなし」を上の中央に）
+    if spec.get("disjoint"):
+        parts.append(_text("重なりなし", _W / 2, cy - r - 12, size=12, color=_INK))
+    elif spec.get("inter_label"):
+        parts.append(_text(spec["inter_label"], _W / 2, cy + 5,
+                           size=14, color="#7a3a78", weight="bold"))
+
+    if spec.get("formula"):
+        parts.append(_text(spec["formula"], _W / 2, 240, size=13, weight="bold"))
+    if spec.get("note"):
+        parts.append(_text(spec["note"], _W / 2, 18, size=12.5))
+    return _wrap("".join(parts))
+
+
+def _series(spec):
+    """時系列の折れ線グラフ。移動平均などの2本目の線も重ねられる。
+
+    spec の例:
+        {"type": "series", "labels": ["1月", ...], "values": [10, 16, 13, 19, 22],
+         "ma": [None, 13, 16, 18, None],  # 2本目（移動平均）。端は None（省略可）
+         "series_label": "売上", "ma_label": "3項移動平均",
+         "mark": 2,   # 赤い丸で強調する番号（maがあればmaの点・省略可）
+         "note": "..."}
+    """
+    labels = spec["labels"]
+    values = spec["values"]
+    ma = spec.get("ma")
+    blue = _COLORS["blue"][0]
+    red = _COLORS["red"][0]
+    axis_y, top = 210, 48
+    slot = (_W - _ML - _MR) / len(values)
+
+    vals = list(values) + [v for v in (ma or []) if v is not None]
+    vmin, vmax = min(vals), max(vals)
+    pad = (vmax - vmin) * 0.18 or 1.0
+
+    def x(i):
+        return _ML + slot * (i + 0.5)
+
+    def y(v):
+        return axis_y - (v - (vmin - pad)) / (vmax - vmin + 2 * pad) * (axis_y - top)
+
+    parts = []
+    show_values = spec.get("show_values", True)  # False で値ラベルを省略できる
+
+    # 元の系列（青の折れ線＋点）。値ラベルは、2本目の線と重ならないように
+    # その点で上にある側の線のラベルを上へ、下にある側を下へ置く
+    pts = " ".join(f"{x(i):.1f},{y(v):.1f}" for i, v in enumerate(values))
+    parts.append(f'<polyline points="{pts}" fill="none" stroke="{blue}" '
+                 f'stroke-width="2" stroke-linejoin="round"/>')
+    for i, v in enumerate(values):
+        parts.append(f'<circle cx="{x(i):.1f}" cy="{y(v):.1f}" r="3.5" fill="{blue}"/>')
+        if show_values:
+            above = ma is None or i >= len(ma) or ma[i] is None or v >= ma[i]
+            dy = -10 if above else 19
+            parts.append(_text(_fmt(v), x(i), y(v) + dy, size=10.5, color=blue))
+
+    # 移動平均など（赤の折れ線＋点＋太字の値ラベル）
+    if ma:
+        pts2 = [(i, v) for i, v in enumerate(ma) if v is not None]
+        line2 = " ".join(f"{x(i):.1f},{y(v):.1f}" for i, v in pts2)
+        parts.append(f'<polyline points="{line2}" fill="none" stroke="{red}" '
+                     f'stroke-width="2.5" stroke-linejoin="round"/>')
+        for i, v in pts2:
+            parts.append(f'<circle cx="{x(i):.1f}" cy="{y(v):.1f}" r="3.5" fill="{red}"/>')
+            if show_values:
+                dy = -12 if v > values[i] else 21
+                parts.append(_text(_fmt(v), x(i), y(v) + dy, size=11, color=red, weight="bold"))
+
+    # 強調の赤い丸（maがあればmaの点、なければ元の系列の点）
+    if spec.get("mark") is not None:
+        i = spec["mark"]
+        v = ma[i] if ma and ma[i] is not None else values[i]
+        parts.append(f'<circle cx="{x(i):.1f}" cy="{y(v):.1f}" r="8" fill="none" '
+                     f'stroke="{red}" stroke-width="2.5"/>')
+
+    # 横軸と時点ラベル
+    parts.append(f'<line x1="{_ML}" y1="{axis_y}" x2="{_W - _MR}" y2="{axis_y}" '
+                 f'stroke="{_AXIS}" stroke-width="1.5"/>')
+    for i, lab in enumerate(labels):
+        parts.append(_text(lab, x(i), axis_y + 18, size=11.5))
+
+    # 凡例（左：元の系列、右：2本目）と図の上の一言
+    if spec.get("series_label"):
+        parts.append(_text(spec["series_label"], _ML + 4, 36, size=12,
+                           color=blue, weight="bold", anchor="start"))
+    if ma and spec.get("ma_label"):
+        parts.append(_text(spec["ma_label"], _W - _MR - 4, 36, size=12,
+                           color=red, weight="bold", anchor="end"))
+    if spec.get("note"):
+        parts.append(_text(spec["note"], _W / 2, 16, size=12.5))
+    return _wrap("".join(parts))
+
+
+def _dot_line(spec):
+    """データを数直線に点で並べる図（中央値・平均値・最頻値・範囲など）。
+
+    spec の例:
+        {"type": "dot_line", "values": [42, 55, 60, 60, 70, 85, 100],
+         "marks": [{"x": 60, "label": "中央値60", "color": "red"}],  # 破線（省略可）
+         "highlight_value": 3,           # この値の点を赤くする（省略可）
+         "range_label": "範囲＝30−12＝18",  # 最小〜最大のブラケット（省略可）
+         "note": "..."}
+    """
+    values = sorted(spec["values"])
+    marks = spec.get("marks") or []
+    blue = _COLORS["blue"][0]
+    red = _COLORS["red"][0]
+    axis_y = 192
+    vmin, vmax = values[0], values[-1]
+    span = (vmax - vmin) or 1
+    pad = span * 0.1
+
+    def x(v):
+        return _ML + 14 + (v - (vmin - pad)) / (span + 2 * pad) * (_W - _ML - _MR - 28)
+
+    parts = []
+    # 横軸と、それぞれの値の目盛り
+    parts.append(f'<line x1="{_ML}" y1="{axis_y}" x2="{_W - _MR}" y2="{axis_y}" '
+                 f'stroke="{_AXIS}" stroke-width="1.5"/>')
+    for v in sorted(set(values)):
+        parts.append(f'<line x1="{x(v):.1f}" y1="{axis_y}" x2="{x(v):.1f}" '
+                     f'y2="{axis_y + 5}" stroke="{_AXIS}" stroke-width="1"/>')
+        parts.append(_text(_fmt(v), x(v), axis_y + 20, size=12))
+
+    # データの点（同じ値は縦に積む）
+    level = {}
+    for v in values:
+        k = level.get(v, 0)
+        level[v] = k + 1
+        color = red if spec.get("highlight_value") == v else blue
+        parts.append(f'<circle cx="{x(v):.1f}" cy="{axis_y - 14 - 15 * k:.1f}" '
+                     f'r="5.5" fill="{color}"/>')
+
+    # 注目する値の破線（ラベルの高さは互い違いにして重なりを防ぐ）
+    for i, m in enumerate(marks):
+        color = _COLORS.get(m.get("color", "red"), _COLORS["red"])[0]
+        label_y = 46 + 20 * i
+        parts.append(
+            f'<line x1="{x(m["x"]):.1f}" y1="{label_y + 6:.1f}" x2="{x(m["x"]):.1f}" '
+            f'y2="{axis_y}" stroke="{color}" stroke-width="1.5" stroke-dasharray="5 4"/>'
+        )
+        parts.append(_text(m["label"], x(m["x"]), label_y, size=12.5,
+                           color=color, weight="bold"))
+
+    # 範囲（最小〜最大）のブラケット
+    if spec.get("range_label"):
+        y = 62
+        parts.append(
+            f'<path d="M{x(vmin):.1f},{y + 8} L{x(vmin):.1f},{y} L{x(vmax):.1f},{y} '
+            f'L{x(vmax):.1f},{y + 8}" fill="none" stroke="{red}" stroke-width="1.5"/>'
+        )
+        parts.append(_text(spec["range_label"], (x(vmin) + x(vmax)) / 2, y - 10,
+                           size=12.5, color=red, weight="bold"))
+
+    if spec.get("note"):
+        parts.append(_text(spec["note"], _W / 2, 18, size=12.5))
+    return _wrap("".join(parts))
+
+
 # 図タイプ名 → 描画関数 の対応表
 _BUILDERS = {
     "normal_area": _normal_area,
@@ -1181,6 +1490,10 @@ _BUILDERS = {
     "uniform_area": _uniform_area,
     "power": _power,
     "bayes_tree": _bayes_tree,
+    "prob_bar": _prob_bar,
+    "venn": _venn,
+    "series": _series,
+    "dot_line": _dot_line,
 }
 
 
